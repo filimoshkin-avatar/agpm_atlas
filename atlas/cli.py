@@ -9,7 +9,7 @@ from pathlib import Path
 
 from datetime import date
 
-from atlas import PROTOTYPE, REFERENCE_JSON, ROOT, db, importer, pipeline, reconcile, site, snapshot
+from atlas import PROTOTYPE, REFERENCE_JSON, ROOT, db, editor, importer, pipeline, reconcile, site, snapshot
 from atlas.model import Model
 
 
@@ -93,6 +93,28 @@ def cmd_week(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_edit_link(args: argparse.Namespace) -> int:
+    changes = {k: v for k, v in {"role": args.role, "grade": args.grade, "basis": args.basis}.items() if v is not None}
+    if args.counts is not None:
+        changes["counts"] = args.counts == "yes"
+    with db.connect() as conn:
+        mid = conn.execute("SELECT id FROM materials WHERE num = %s", (args.num,)).fetchone()["id"]
+        changed = editor.edit_link(conn, mid, args.item, actor=args.actor, reason=args.reason, **changes)
+        conn.commit()
+    print(json.dumps({"material": mid, "item": args.item, "changed": changed, "pinned": True}, ensure_ascii=False))
+    return 0
+
+
+def cmd_release_edits(args: argparse.Namespace) -> int:
+    with db.connect() as conn:
+        report = editor.release_edits(conn, version=args.version, slice_date=date.fromisoformat(args.version[:10]),
+                                      title=args.title, editorial=args.editorial)
+        conn.commit()
+    print(json.dumps({"version": report.version, "signal_changes": [f"{c['item']}: {c['from']} → {c['to']}" for c in report.signal_changes],
+                      "queue": report.queue}, ensure_ascii=False))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="atlas")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -110,6 +132,21 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--end", required=True, help="дата среза ГГГГ-ММ-ДД")
     p.add_argument("--model", help="модель, по умолчанию ATLAS_MODEL или openai/gpt-6.1-sol")
     p.set_defaults(func=cmd_week)
+    p = sub.add_parser("edit-link", help="правка связи редактором: журнал и закрепление")
+    p.add_argument("--num", type=int, required=True)
+    p.add_argument("--item", required=True)
+    p.add_argument("--role")
+    p.add_argument("--grade")
+    p.add_argument("--counts", choices=["yes", "no"])
+    p.add_argument("--basis")
+    p.add_argument("--reason", required=True)
+    p.add_argument("--actor", default="редактор")
+    p.set_defaults(func=cmd_edit_link)
+    p = sub.add_parser("release-edits", help="версия с правками редактора, без забора и модели")
+    p.add_argument("--version", required=True, help="ГГГГ-ММ-ДД-N")
+    p.add_argument("--title", required=True)
+    p.add_argument("--editorial", action="append", default=[], help="строка «Уточнения редакции»")
+    p.set_defaults(func=cmd_release_edits)
     args = parser.parse_args(argv)
     return args.func(args)
 

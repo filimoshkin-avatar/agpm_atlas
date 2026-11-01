@@ -266,7 +266,7 @@ def _insert_material(conn, mid: str, num: int | None, item: RadarItem, d: dict[s
 
 # ---------- пересчёт и версия ----------
 
-def recompute(conn, version: str, run_id: int, report: WeekReport) -> None:
+def recompute(conn, version: str, run_id: int | None, report: WeekReport, *, default_note: str = "сигнал изменён правилом") -> None:
     data = snapshot.build(conn, {"id": version, "slice": version, "title": "", "prev": None, "radar_range": {}, "note": ""}, [])
     materials = {m["id"]: m for m in data["materials"]}
     by_item: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -280,7 +280,7 @@ def recompute(conn, version: str, run_id: int, report: WeekReport) -> None:
             continue
         decisive = [l for l in by_item[item["key"]] if l["counts"] and l["origin"] == ORIGIN]
         cause = decisive[-1] if decisive else None
-        note = f"сигнал изменён: № {materials[cause['material']]['num']}" if cause else "сигнал изменён правилом"
+        note = f"сигнал изменён: № {materials[cause['material']]['num']}" if cause else default_note
         conn.execute("UPDATE items SET signal = %s, signal_origin = 'rule' WHERE key = %s", (sig["value"], item["key"]))
         conn.execute("INSERT INTO item_history (item_key, version, signal, note) VALUES (%s, %s, %s, %s)",
                      (item["key"], version, sig["value"], note))
@@ -328,6 +328,50 @@ def _changes(prev: dict[str, Any], cur: dict[str, Any], report: WeekReport) -> d
     }
 
 
+def _versions_list(conn) -> list[dict[str, Any]]:
+    rows = conn.execute("SELECT id, slice, title, counters, state, changes, prev FROM versions ORDER BY slice, id").fetchall()
+    out = []
+    for r in rows:
+        ch = r["changes"] if isinstance(r["changes"], dict) else {}
+        out.append({"id": r["id"], "date": r["slice"].isoformat(), "title": r["title"], "materials": r["counters"]["materials"],
+                    "items": r["counters"]["items"], "summary": ch.get("summary", "первая версия архива, ручная разметка"),
+                    "state": r["state"], "demo": False, "prev": r["prev"], **({"changes": ch} if ch.get("totals") else {})})
+    return out
+
+
+def release(conn, *, version: str, title: str, note: str, slice_date: date, new_issues: int, report: WeekReport,
+            editorial: list[str] = ()) -> None:
+    """Снимок текущего состояния базы как версия в состоянии held."""
+    prev = _last_version(conn)
+    prev_snap = prev["snapshot"]
+    rr = prev_snap["version"]["radar_range"]
+    head = {"id": version, "slice": slice_date.isoformat(), "title": title, "prev": prev["id"],
+            "radar_range": {"from": rr["from"], "to": slice_date.isoformat(), "issues": rr["issues"] + new_issues}, "note": note}
+    data = snapshot.build(conn, head, _versions_list(conn))
+    changes = _changes(prev_snap, data, report)
+    changes["editorial"] = [{"text": text} for text in editorial]
+    added = len(data["materials"]) - len(prev_snap["materials"])
+    parts = [f"+{added} материалов"] if added else []
+    parts.append(f"сигналов изменено: {len(report.signal_changes)}" if report.signal_changes else "сигналы без изменений")
+    if editorial:
+        parts.append(f"уточнений редакции: {len(editorial)}")
+    changes["summary"] = ", ".join(parts)
+    old_links = {(l["material"], l["item"], l["role"], l["grade"]) for l in prev_snap["links"]}
+    kept = {(l["material"], l["item"], l["role"], l["grade"]) for l in data["links"]}
+    changed_old = len(old_links - kept) / max(1, len(old_links))
+    if len(report.signal_changes) > SIGNAL_CHANGE_LIMIT or changed_old > OLD_LINKS_CHANGE_SHARE:
+        report.held_reason = f"резкие изменения: смен сигнала {len(report.signal_changes)}, старых связей изменено {changed_old:.1%}"
+    data["versions"].append({"id": version, "date": slice_date.isoformat(), "title": title, "materials": len(data["materials"]),
+                             "items": len(data["items"]), "summary": changes["summary"], "state": "held", "demo": False,
+                             "prev": prev["id"], "changes": changes})
+    snapshot.store(conn, data, state="held")
+    conn.execute("UPDATE versions SET changes = %s, checks = %s WHERE id = %s",
+                 (json.dumps(changes, ensure_ascii=False),
+                  json.dumps([{"id": "sharp_changes", "held": bool(report.held_reason), "detail": report.held_reason}], ensure_ascii=False),
+                  version))
+    report.version = version
+
+
 def run_week(conn: psycopg.Connection, *, end: date, model: Model, sources: Sources | None = None,
              get: Getter = http_get, today: date | None = None) -> WeekReport:
     """Прогон по выпускам радара до `end` включительно; версия с id = end."""
@@ -356,43 +400,12 @@ def run_week(conn: psycopg.Connection, *, end: date, model: Model, sources: Sour
         conn.commit()
 
     recompute(conn, version, run_id, report)
-    prev_snap = prev["snapshot"]
-    changed = report.classified or report.signal_changes
-    if changed:
+    if report.classified or report.signal_changes:
         new_issues = [d for d in report.issues if d > prev["slice"].isoformat()]
-        rr = prev_snap["version"]["radar_range"]
-        head = {
-            "id": version, "slice": version,
-            "title": f"Неделя {(prev['slice'] + timedelta(days=1)).strftime('%d.%m')}–{end.strftime('%d.%m.%Y')}",
-            "prev": prev["id"],
-            "radar_range": {"from": rr["from"], "to": version, "issues": rr["issues"] + len(new_issues)},
-            "note": f"Материалы радара с {(prev['slice'] + timedelta(days=1)).isoformat()} по {version}.",
-        }
-        rows = conn.execute("SELECT id, slice, title, counters, state, changes, prev FROM versions ORDER BY slice").fetchall()
-        versions = [{"id": r["id"], "date": r["slice"].isoformat(), "title": r["title"], "materials": r["counters"]["materials"],
-                     "items": r["counters"]["items"], "summary": (r["changes"] or {}).get("summary", "первая версия архива, ручная разметка") if isinstance(r["changes"], dict) else "первая версия архива, ручная разметка",
-                     "state": r["state"], "demo": False, "prev": r["prev"],
-                     **({"changes": r["changes"]} if isinstance(r["changes"], dict) and r["changes"].get("totals") else {})}
-                    for r in rows]
-        data = snapshot.build(conn, head, versions)
-        changes = _changes(prev_snap, data, report)
-        added = len(data["materials"]) - len(prev_snap["materials"])
-        summary = f"+{added} материалов" + (f", сигналов изменено: {len(report.signal_changes)}" if report.signal_changes else ", сигналы без изменений")
-        changes["summary"] = summary
-        old_links = {(l["material"], l["item"], l["role"], l["grade"]) for l in prev_snap["links"]}
-        kept = {(l["material"], l["item"], l["role"], l["grade"]) for l in data["links"]}
-        changed_old = len(old_links - kept) / max(1, len(old_links))
-        if len(report.signal_changes) > SIGNAL_CHANGE_LIMIT or changed_old > OLD_LINKS_CHANGE_SHARE:
-            report.held_reason = f"резкие изменения: смен сигнала {len(report.signal_changes)}, старых связей изменено {changed_old:.1%}"
-        data["versions"].append({"id": version, "date": version, "title": head["title"], "materials": len(data["materials"]),
-                                 "items": len(data["items"]), "summary": summary, "state": "held", "demo": False,
-                                 "prev": prev["id"], "changes": changes})
-        snapshot.store(conn, data, state="held")
-        conn.execute("UPDATE versions SET changes = %s, checks = %s WHERE id = %s",
-                     (json.dumps(changes, ensure_ascii=False),
-                      json.dumps([{"id": "sharp_changes", "held": bool(report.held_reason), "detail": report.held_reason}], ensure_ascii=False),
-                      version))
-        report.version = version
+        release(conn, version=version,
+                title=f"Неделя {(prev['slice'] + timedelta(days=1)).strftime('%d.%m')}–{end.strftime('%d.%m.%Y')}",
+                note=f"Материалы радара с {(prev['slice'] + timedelta(days=1)).isoformat()} по {version}.",
+                slice_date=end, new_issues=len(new_issues), report=report)
     conn.execute(
         """UPDATE runs SET finished_at = now(), counters = %s, model_calls = %s, model_tokens = %s WHERE id = %s""",
         (json.dumps({"issues": len(report.issues), "fetched": report.fetched, "linked": report.linked, "classified": report.classified,

@@ -114,3 +114,25 @@ def test_number_without_source_defers_the_material(base, tmp_path):
     report = pipeline.run_week(base, end=date(2026, 11, 1), model=model, sources=FakeSources(), get=getter)
     assert report.classified == 0 and report.deferred == 56 - report.excluded
     assert report.version is None
+
+
+def test_editor_correction_reverts_signal_pins_link_and_journals_it(base, tmp_path):
+    from atlas import editor
+    model = Model("stub", lambda m, p: stub_answer(p), cache_dir=tmp_path)
+    report = pipeline.run_week(base, end=date(2026, 11, 1), model=model, sources=FakeSources(), get=getter)
+    if not report.signal_changes:
+        pytest.skip("в образце нет учитываемых связей")
+    mid = base.execute("SELECT material_id FROM links WHERE item_key = 'A2_intake' AND counts LIMIT 1").fetchone()["material_id"]
+    for (m,) in [(r["material_id"],) for r in base.execute("SELECT material_id FROM links WHERE item_key = 'A2_intake' AND counts")]:
+        editor.edit_link(base, m, "A2_intake", actor="редактор", reason="пресс-релиз продавца",
+                         role="кейс по данным продавца", grade="claims", counts=False)
+    rep = editor.release_edits(base, version="2026-11-01-2", slice_date=date(2026, 11, 1), title="Уточнения",
+                               editorial=["№ … — пресс-релиз продавца"])
+    base.commit()
+    assert base.execute("SELECT signal FROM items WHERE key = 'A2_intake'").fetchone()["signal"] == "claimed"
+    assert base.execute("SELECT pinned FROM links WHERE material_id = %s AND item_key = 'A2_intake'", (mid,)).fetchone()["pinned"]
+    assert base.execute("SELECT count(*) AS n FROM edits WHERE version = '2026-11-01-2'").fetchone()["n"] >= 3
+    hist = base.execute("SELECT note FROM item_history WHERE item_key = 'A2_intake' AND version = '2026-11-01-2'").fetchone()
+    assert hist["note"] == "правка редактора"
+    row = base.execute("SELECT state, changes FROM versions WHERE id = '2026-11-01-2'").fetchone()
+    assert row["state"] == "held" and row["changes"]["editorial"] and rep.signal_changes
