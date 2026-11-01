@@ -16,8 +16,8 @@ mkdir -p var
 
 notify() {
   [ -n "${ATLAS_NOTIFY_TARGET:-}" ] || { echo "оповещение пропущено: ATLAS_NOTIFY_TARGET не задан" >>"$LOG"; return 0; }
-  OPENCLAW_CONFIG_PATH=/root/.openclaw-projectmanager/openclaw.json OPENCLAW_STATE_DIR=/root/.openclaw-projectmanager \
-    openclaw message send --channel "${ATLAS_NOTIFY_CHANNEL:-telegram}" --target "$ATLAS_NOTIFY_TARGET" --message "$1" >/dev/null \
+  # Основной шлюз OpenClaw: шлюз профиля projectmanager остановлен (01.11.2026), через него сообщения не уходят.
+  openclaw message send --channel "${ATLAS_NOTIFY_CHANNEL:-telegram}" --target "$ATLAS_NOTIFY_TARGET" --message "$1" >/dev/null 2>&1 \
     || echo "оповещение не ушло" >>"$LOG"
 }
 fail() { notify "Атлас AgPM: тревога, шаг «$1». $2"; echo "ТРЕВОГА: $1: $2" >>"$LOG"; exit 1; }
