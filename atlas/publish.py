@@ -140,6 +140,21 @@ def _build(conn, version: str, root: Path) -> tuple[Path, dict[str, Any]]:
     return out, manifest
 
 
+def _fresh(conn, version: str, root: Path) -> tuple[Path, dict[str, Any]]:
+    """Папка версии с текущими состояниями версий: предпросмотр собирал её ещё
+    «задержанной», а на сайте она должна значиться опубликованной."""
+    out = root / "releases" / version
+    if not out.exists():
+        return _build(conn, version, root)
+    row = conn.execute("SELECT snapshot FROM versions WHERE id = %s", (version,)).fetchone()
+    tmp, manifest = _build_aside(conn, version, row["snapshot"], root)
+    import time
+    stale = root / "releases" / f".{version}.replaced-{int(time.time())}"
+    out.rename(stale)
+    tmp.rename(out)
+    return out, manifest
+
+
 def _build_aside(conn, version: str, stored: dict[str, Any], root: Path) -> tuple[Path, dict[str, Any]]:
     """Сборка во временную папку рядом с releases/<версия>."""
     tmp = root / "releases" / f".{version}.building"
@@ -250,7 +265,7 @@ def publish(conn: psycopg.Connection, version: str, *, actor: str, root: Path = 
         "SELECT id FROM versions WHERE state = 'published' AND id <> ALL(%s) ORDER BY slice, id", ([*earlier, version],))
         if not (root / "releases" / r["id"]).exists()]
     for vid in [*archived, *earlier, version]:
-        out, manifest = _build(conn, vid, root)
+        out, manifest = _fresh(conn, vid, root) if vid in (*earlier, version) else _build(conn, vid, root)
         report.built.append(vid)
         if vid == version:
             for c in site_checks(out, manifest):

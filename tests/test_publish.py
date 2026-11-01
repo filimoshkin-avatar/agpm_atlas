@@ -87,3 +87,14 @@ def test_cleanup_keeps_current_and_young_folders(week):
     removed = publish.cleanup(conn, root)
     assert removed == {"versions": ["2026-10-09"], "leftovers": [".x.replaced-1"]}
     assert (root / "current" / "index.html").is_file()
+
+
+def test_preview_then_publish_lists_version_as_current(week):
+    import json
+    conn, report, root = week
+    url = publish.preview(conn, "2026-11-01", root)
+    assert url == "/v/2026-11-01/"
+    publish.publish(conn, "2026-11-01", actor="тест", root=root, force_sharp=True)
+    core = next((root / "current" / "data").glob("core.*.json"))
+    states = {v["id"]: v["state"] for v in json.loads(core.read_text(encoding="utf-8"))["versions"]}
+    assert states["2026-11-01"] == "current"

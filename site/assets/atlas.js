@@ -187,8 +187,8 @@
   }
   const scHTML = (i, selected) => `<a class="sc${selected === i.key ? ' sel' : ''}" href="${link(['scenario', i.key])}" aria-label="${esc(i.short)}. Сигнал: ${esc(sigName(i.signal))}. Материалов радара: ${(linksByItem[i.key] || []).length}"><span class="mk">${mark(i.signal, 18)}<span class="ct">${(linksByItem[i.key] || []).length}</span></span><span><span class="t">${esc(i.short)}</span><span class="l">${esc(i.card_line)}</span>${i.status === 'new' ? '<span class="tag new tg">новый</span>' : ''}</span></a>`;
   function listHTML(selected) {
-    const cors = R.corridors.map(c => `<section class="cor"><h3>${c.key} · ${esc(c.name)}</h3><div class="sb">${esc(c.sub)} · ${pl(corridorMats(c.key), 'материал', 'материала', 'материалов')}</div>${R.levels.map(l => { const its = D.items.filter(i => i.corridor === c.key && i.level === l.n && i.kind !== 'neighbor'); if (!its.length) return ''; return `<div class="lv"><div class="ln">${l.n} · ${esc(l.name)}</div>${its.map(i => i.kind === 'loss' ? `<a class="sc" href="${link(['scenario', i.key])}"><span class="mk">${mark(null, 18)}</span><span><span class="t">Главная зона потерь</span><span class="l">${esc(i.card_title)}</span></span></a>` : scHTML(i, selected)).join('')}</div>`; }).join('')}</section>`).join('');
-    const nb = `<section class="cor"><h3>Соседние территории</h3><div class="sb">что агентам уже доверяют вне проектов</div>${D.items.filter(i => i.kind === 'neighbor').sort((a, b) => b.level - a.level).map(i => scHTML(i, selected)).join('')}</section>`;
+    const cors = R.corridors.map(c => `<section class="cor"><h2>${c.key} · ${esc(c.name)}</h2><div class="sb">${esc(c.sub)} · ${pl(corridorMats(c.key), 'материал', 'материала', 'материалов')}</div>${R.levels.map(l => { const its = D.items.filter(i => i.corridor === c.key && i.level === l.n && i.kind !== 'neighbor'); if (!its.length) return ''; return `<div class="lv"><div class="ln">${l.n} · ${esc(l.name)}</div>${its.map(i => i.kind === 'loss' ? `<a class="sc" href="${link(['scenario', i.key])}"><span class="mk">${mark(null, 18)}</span><span><span class="t">Главная зона потерь</span><span class="l">${esc(i.card_title)}</span></span></a>` : scHTML(i, selected)).join('')}</div>`; }).join('')}</section>`).join('');
+    const nb = `<section class="cor"><h2>Соседние территории</h2><div class="sb">что агентам уже доверяют вне проектов</div>${D.items.filter(i => i.kind === 'neighbor').sort((a, b) => b.level - a.level).map(i => scHTML(i, selected)).join('')}</section>`;
     return `<div class="sheet-list" id="sheetList">${cors}${nb}</div>`;
   }
   function passportHTML(key) {
@@ -261,7 +261,8 @@
   }
   function rowHTML(m, open) {
     const ls = linksByMat[m.id] || [];
-    return `<tr class="row${open ? ' open' : ''}" data-k="${m.id}" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"><td class="sid">№ ${m.num}</td><td><b>${esc(m.title)}</b><div class="sub">${esc(m.outlet)}</div></td><td class="sec">${esc(SEC[m.section].name)}${m.practice ? `<div class="sub">${esc(PR[m.practice].name)}</div>` : ''}</td><td class="pt${ls.length ? '' : ' none'}">${ls.map(l => ptl(l.item)).join('') || '—'}</td><td class="ev">${esc(m.type)}<br>${esc(m.evidence)}${m.flags.length ? '<br>' + esc(m.flags.join(', ')) : ''}</td><td class="dt">${m.pub_date ? fmtShort(m.pub_date) : '<span title="дата публикации не установлена">не установлена</span>'}</td></tr>`;
+    /* Раскрытие строки — кнопкой с номером: у строки таблицы aria-expanded не допускается (axe-core). */
+    return `<tr class="row${open ? ' open' : ''}" data-k="${m.id}"><td class="sid"><button type="button" class="rowbtn" aria-expanded="${open ? 'true' : 'false'}" aria-label="№ ${m.num}: ${open ? 'свернуть' : 'раскрыть'} суть">№ ${m.num}</button></td><td><b>${esc(m.title)}</b><div class="sub">${esc(m.outlet)}</div></td><td class="sec">${esc(SEC[m.section].name)}${m.practice ? `<div class="sub">${esc(PR[m.practice].name)}</div>` : ''}</td><td class="pt${ls.length ? '' : ' none'}">${ls.map(l => ptl(l.item)).join('') || '—'}</td><td class="ev">${esc(m.type)}<br>${esc(m.evidence)}${m.flags.length ? '<br>' + esc(m.flags.join(', ')) : ''}</td><td class="dt">${m.pub_date ? fmtShort(m.pub_date) : '<span title="дата публикации не установлена">не установлена</span>'}</td></tr>`;
   }
   function detHTML(m) {
     return `<tr class="det"><td class="sid"></td><td colspan="5"><div class="det-in">${m.summary ? `<div class="ms">${esc(m.summary)}</div>` : ''}<div class="mm">${esc(R.desc_origin[m.desc_origin])}${m.radar_dates.length ? ` В радаре: ${m.radar_dates.map(fmtShort).join(', ')}.` : ''}${m.pub_date ? ` Дата публикации: ${fmtDate(m.pub_date)}.` : ''}</div>${m.numbers.length ? `<div class="num"><b>Цифры:</b> ${esc(m.numbers.join('; '))}</div>` : ''}${m.takeaway ? `<div class="tk">${esc(m.takeaway)}</div>` : ''}<div class="mm src"><a href="${esc(m.url)}" target="_blank" rel="noopener noreferrer">Открыть источник<i class="ext" aria-hidden="true"></i></a> · <a href="${link(['m', String(m.num)])}">постоянная ссылка</a></div></div></td></tr>`;
@@ -280,9 +281,12 @@
       if (e.target.closest('[data-more]')) { state.page++; rerender(); return; }
       if (e.target.closest('a')) return;
       const tr = e.target.closest('tr.row'); if (!tr) return;
+      const viaButton = !!e.target.closest('.rowbtn');
       state.open = state.open === tr.dataset.k ? null : tr.dataset.k; rerender();
+      if (viaButton) { const b = container.querySelector(`tr.row[data-k="${tr.dataset.k}"] .rowbtn`); if (b) b.focus(); }
     });
-    container.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr.row')) { e.preventDefault(); state.open = state.open === e.target.dataset.k ? null : e.target.dataset.k; rerender(); } });
+    /* Клавиатура: кнопка с номером раскрывает строку сама (Enter и пробел у кнопки работают по умолчанию). */
+    container.addEventListener('keydown', e => { if (e.key === 'Escape' && state.open) { const k = state.open; state.open = null; rerender(); const b = container.querySelector(`tr.row[data-k="${k}"] .rowbtn`); if (b) b.focus(); } });
   }
   function viewIndex(q, openNum) {
     setNav('index');
@@ -327,7 +331,7 @@
   function viewSections() {
     setNav('sections');
     app.innerHTML = `<div class="col"><p class="kicker">Разделы атласа</p><h1 class="title" style="font-size:36px">Девять разделов указателя</h1><p class="lead">Каждый материал радара лежит ровно в одном разделе по своему главному предмету. Связи со сценариями матрицы от раздела не зависят: материал из «Фона» может подкреплять сценарий.</p></div>
-      <div class="layout col">${drawerBtn}${treeHTML({})}<div class="cards">${R.sections.map(s => `<a class="card" href="${link(['section', s.key])}"><h3>${esc(s.name)}</h3><p>${esc(s.definition)}</p><span class="ct">${pl(secCount(s.key), 'материал', 'материала', 'материалов')}${s.key === 'practice' ? ` · ${R.practices.length} практик` : ''}</span></a>`).join('')}</div></div>`;
+      <div class="layout col">${drawerBtn}${treeHTML({})}<div class="cards">${R.sections.map(s => `<a class="card" href="${link(['section', s.key])}"><h2>${esc(s.name)}</h2><p>${esc(s.definition)}</p><span class="ct">${pl(secCount(s.key), 'материал', 'материала', 'материалов')}${s.key === 'practice' ? ` · ${R.practices.length} практик` : ''}</span></a>`).join('')}</div></div>`;
     bindDrawer();
   }
   function viewSection(key, prKey) {
@@ -367,7 +371,7 @@
         .sort((p, q2) => (q2.changed - p.changed) || p.i.short.localeCompare(q2.i.short));
       const cell = h => h ? `<span style="display:inline-flex;align-items:center;gap:6px">${mark(h.signal, 13)}${esc(sigName(h.signal))} · ${h.materials}</span>` : '<span class="note">нет</span>';
       table = `<div class="diff"><div><span>материалов</span><b>${a.materials} → ${b.materials}</b><i>${b.materials - a.materials >= 0 ? '+' : ''}${b.materials - a.materials}</i></div><div><span>изменилось сценариев и территорий</span><b>${rows.filter(r => r.changed).length}</b><i>из ${rows.length}</i></div></div>
-        <table class="tbl"><thead><tr><th>Сценарий</th><th>${esc(fmtShort(a.date))}</th><th>${esc(fmtShort(b.date))}</th></tr></thead><tbody>${rows.map(r => `<tr${r.changed ? '' : ' class="sub"'}><td><a href="${link(['scenario', r.i.key])}">${esc(r.i.short)}</a></td><td>${cell(r.x)}</td><td>${cell(r.y)}</td></tr>`).join('')}</tbody></table>`;
+        <div class="tblwrap"><table class="tbl"><thead><tr><th>Сценарий</th><th>${esc(fmtShort(a.date))}</th><th>${esc(fmtShort(b.date))}</th></tr></thead><tbody>${rows.map(r => `<tr${r.changed ? '' : ' class="sub"'}><td><a href="${link(['scenario', r.i.key])}">${esc(r.i.short)}</a></td><td>${cell(r.x)}</td><td>${cell(r.y)}</td></tr>`).join('')}</tbody></table></div>`;
     }
     return `<h2 class="h">Сравнить две версии</h2><form class="filters" id="cmp"><select name="a" aria-label="Первая версия">${opts(q.a || (vs[vs.length - 1] || {}).id)}</select><select name="b" aria-label="Вторая версия">${opts(q.b || (vs[0] || {}).id)}</select><button class="btn" type="submit">Сравнить</button></form>${table}`;
   }

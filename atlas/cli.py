@@ -146,6 +146,18 @@ def cmd_publish(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_preview(args: argparse.Namespace) -> int:
+    """Предпросмотр последней задержанной версии по скрытому адресу /v/<версия>/."""
+    with db.connect() as conn:
+        row = conn.execute("SELECT id FROM versions WHERE state = 'held' ORDER BY slice DESC, id DESC LIMIT 1").fetchone()
+        if row is None:
+            print(json.dumps({"error": "задержанных версий нет"}, ensure_ascii=False))
+            return 1
+        url = publish.preview(conn, row["id"], args.root or publish.SITE_ROOT)
+    print(json.dumps({"version": row["id"], "url": url}, ensure_ascii=False))
+    return 0
+
+
 def cmd_rebuild(args: argparse.Namespace) -> int:
     with db.connect() as conn:
         out = publish.rebuild(conn, args.version, actor=args.actor, root=args.root or publish.SITE_ROOT)
@@ -244,6 +256,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--actor", default="автоматика")
     p.add_argument("--root", type=Path)
     p.set_defaults(func=cmd_publish)
+    p = sub.add_parser("preview", help="собрать предпросмотр последней задержанной версии")
+    p.add_argument("--root", type=Path)
+    p.set_defaults(func=cmd_preview)
     p = sub.add_parser("rebuild-site", help="пересобрать папку версии из её снимка под новый код сайта")
     p.add_argument("--version", required=True)
     p.add_argument("--actor", default="выкладка кода")

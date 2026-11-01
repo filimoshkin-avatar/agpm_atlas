@@ -5,7 +5,7 @@
 
 :root {
   --bg:#0b0d14; --deep:#07080d; --card:#11141c; --raised:#1a1e28;
-  --tx:#eef0f5; --tx2:#a3a9b8; --mut:#7a8296;
+  --tx:#eef0f5; --tx2:#a3a9b8; --mut:#8a92a6;
   --line:rgba(238,240,245,.08); --line2:rgba(238,240,245,.14);
   --accent:#5b9bff; --accent-soft:rgba(91,155,255,.14);
   --btn:#eef0f5; --btn-tx:#0b0d14;
@@ -192,7 +192,7 @@ select { background:var(--raised); border:1px solid var(--line2); border-radius:
 .viewsw .btn[aria-pressed="true"] { background:var(--btn); border-color:var(--btn); color:var(--btn-tx); }
 .sheet-list { display:none; margin-top:16px; }
 .sheet-list .cor { border:1px solid var(--line2); border-radius:var(--r-card); padding:16px; margin-bottom:12px; background:var(--card); }
-.sheet-list .cor h3 { font-size:16px; margin:0; }
+.sheet-list .cor h3, .sheet-list .cor h2 { font-size:16px; margin:0; }
 .sheet-list .cor .sb { font-size:12px; color:var(--tx2); }
 .sheet-list .lv { margin-top:12px; }
 .sheet-list .lv .ln { font-size:12px; color:var(--mut); margin-bottom:4px; }
@@ -303,7 +303,7 @@ select { background:var(--raised); border:1px solid var(--line2); border-radius:
 .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; margin-top:16px; }
 .card { border:1px solid var(--line2); border-radius:var(--r-card); padding:20px; text-decoration:none; color:inherit; display:block; background:var(--card); transition:border-color .15s var(--ease); }
 .card:hover { border-color:var(--tx2); }
-.card h3 { font-size:16px; margin:0 0 8px; }
+.card h3, .card h2 { font-size:16px; margin:0 0 8px; }
 .card p { font-size:13px; color:var(--tx2); margin:0; }
 .card .ct { font-family:var(--f-mono); font-size:11px; color:var(--mut); margin-top:12px; display:block; }
 .vlist { list-style:none; margin:16px 0; padding:0; }
@@ -428,3 +428,10 @@ footer .links a:hover { color:var(--tx); text-decoration:underline; }
 #passport { scroll-margin-top:16px; }
 @media (prefers-reduced-motion: reduce) { .top { transition:none; } }
 @media print { .top { position:static; transform:none !important; } }
+.tblwrap { overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:100%; }
+/* Сборка сайта: кнопка раскрытия строки указателя выглядит как прежний номер. */
+.tbl .rowbtn { all:unset; cursor:pointer; font:inherit; color:inherit; }
+.tbl .rowbtn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+/* Светлая тема: мелкие метки без подкрашенной подложки — так цвета палитры дают контраст не ниже 4,5:1. */
+:root[data-theme="light"] .role.r-confirms, :root[data-theme="light"] .role.r-claims, :root[data-theme="light"] .role.r-refutes,
+:root[data-theme="light"] .tag.ok, :root[data-theme="light"] .tag.demo { background:none; }

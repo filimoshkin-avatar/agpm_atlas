@@ -2,7 +2,7 @@
 # Недельный прогон атласа на управляющем сервере (crontab root: «0 6 * * 1», пн 09:00 МСК).
 #  1) туннель к базе на Local Ru;
 #  2) забор и разбор моделью; выгрузка радара недоступна — повтор каждый час до 18:00, затем тревога;
-#  3) публикация на Local Ru по ключу с принудительной командой;
+#  3) предпросмотр на Local Ru, проверка доступности axe-core, публикация по ключу с принудительной командой;
 #  4) сводка или тревога в Telegram.
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -44,6 +44,12 @@ done
 version=$(.venv/bin/python -c "import json,sys;print(json.load(open('var/week-$END.json')).get('version') or '')")
 if [ -z "$version" ]; then
   notify "Атлас AgPM: за неделю новых материалов нет, версия не создана."; exit 0
+fi
+# Блокирующая проверка доступности: предпросмотр по скрытому адресу и axe-core с управляющего сервера.
+ssh -i "$PUBLISH_KEY" -o BatchMode=yes "atlas@$HOST" preview >>"$LOG" 2>&1 || fail "предпросмотр" "не собран, подробности в $LOG"
+if ! node tools/a11y_check.cjs "https://atlas.agpm.space/v/$version/" >"var/a11y-$version.json" 2>>"$LOG"; then
+  notify "Атлас AgPM: версия $version не опубликована — проверка доступности нашла серьёзные нарушения (var/a11y-$version.json на управляющем сервере). Версия ждёт кабинета: https://atlas.agpm.space/editor/"
+  exit 1
 fi
 out=$(ssh -i "$PUBLISH_KEY" -o BatchMode=yes "atlas@$HOST" publish 2>>"$LOG"); rc=$?
 summary=$(.venv/bin/python -m atlas.cli summary --version "$version" 2>>"$LOG")

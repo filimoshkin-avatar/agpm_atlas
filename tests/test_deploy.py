@@ -31,7 +31,7 @@ def test_cabinet_port_and_paths_agree():
     assert "ReadWritePaths=/srv/atlas.agpm.space" in unit and "/srv/atlas.agpm.space/current" in caddy
 
 
-def test_publish_key_can_only_publish():
+def test_publish_key_can_only_preview_and_publish():
     remote = (DEPLOY / "remote.sh").read_text(encoding="utf-8")
     commands = re.findall(r"^\s+([a-z*]+)\)", remote, re.M)
-    assert commands == ["publish", "*"]
+    assert commands == ["preview", "publish", "*"]
