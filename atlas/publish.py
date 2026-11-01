@@ -177,7 +177,10 @@ def publish(conn: psycopg.Connection, version: str, *, actor: str, root: Path = 
         conn.execute("UPDATE versions SET state = 'published' WHERE id = %s", (vid,))
     conn.execute("UPDATE versions SET state = 'published' WHERE state = 'current'")
     conn.execute("UPDATE versions SET state = 'current' WHERE id = %s", (version,))
-    for vid in [*earlier, version]:
+    archived = [r["id"] for r in conn.execute(
+        "SELECT id FROM versions WHERE state = 'published' AND id <> ALL(%s) ORDER BY slice, id", ([*earlier, version],))
+        if not (root / "releases" / r["id"]).exists()]
+    for vid in [*archived, *earlier, version]:
         out, manifest = _build(conn, vid, root)
         report.built.append(vid)
         if vid == version:

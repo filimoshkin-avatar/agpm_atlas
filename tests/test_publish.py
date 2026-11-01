@@ -23,6 +23,7 @@ def test_publish_builds_checks_and_switches_atomically(week):
     assert (root / "current" / "index.html").is_file()
     states = {r["id"]: r["state"] for r in conn.execute("SELECT id, state FROM versions")}
     assert states == {"2026-10-09": "published", "2026-11-01": "current"}
+    assert (root / "releases" / "2026-10-09" / "index.html").is_file()  # архивная версия тоже открывается по /v/
     core = next((root / "current" / "data").glob("core.*.json"))
     versions = json.loads(core.read_text(encoding="utf-8"))["versions"]
     assert [v["state"] for v in versions] == ["published", "current"]
