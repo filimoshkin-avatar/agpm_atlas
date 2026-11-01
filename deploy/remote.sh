@@ -8,5 +8,6 @@ cd /opt/atlas/current
 case "${SSH_ORIGINAL_COMMAND:-}" in
   preview) exec /opt/atlas/venv/bin/python -m atlas.cli preview ;;
   publish) exec /opt/atlas/venv/bin/python -m atlas.cli publish --actor автоматика ;;
+  og) exec /opt/atlas/venv/bin/python -m atlas.cli put-og ;;
   *) echo "команда не разрешена: ${SSH_ORIGINAL_COMMAND:-}" >&2; exit 2 ;;
 esac

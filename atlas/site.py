@@ -162,6 +162,7 @@ def build(snap: dict[str, Any], out: Path) -> dict[str, Any]:
             title=page.title, heading=page.heading, description=page.description,
             canonical=f"{SITE_URL}/{page.path}", noindex=page.noindex, slice_line=slice_line,
             fonts_css=hashed["fonts.css"], atlas_css=hashed["atlas.css"], atlas_js=hashed["atlas.js"],
+            og_image=f"{SITE_URL}/og.png",
         )
         target = out / page.path / "index.html"
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -172,8 +173,11 @@ def build(snap: dict[str, Any], out: Path) -> dict[str, Any]:
         title="Страницы нет — Атлас AgPM", heading="Такого адреса в атласе нет",
         description="Проверьте ссылку или вернитесь к матрице.", canonical="", noindex=True, notfound=True,
         slice_line=slice_line, fonts_css=hashed["fonts.css"], atlas_css=hashed["atlas.css"], atlas_js=hashed["atlas.js"],
+        og_image=f"{SITE_URL}/og.png",
     )
     (out / "404.html").write_text(not_found, encoding="utf-8")
+    # Картинка для соцсетей: стартовая — снимок матрицы; недельный прогон заменяет её снимком своей версии.
+    shutil.copyfile(SITE_SRC / "assets" / "img" / "og-default.png", out / "og.png")
     (out / "robots.txt").write_text(
         f"User-agent: *\nDisallow: /v/\nDisallow: /editor/\nSitemap: {SITE_URL}/sitemap.xml\n", encoding="utf-8"
     )

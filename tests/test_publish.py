@@ -98,3 +98,23 @@ def test_preview_then_publish_lists_version_as_current(week):
     core = next((root / "current" / "data").glob("core.*.json"))
     states = {v["id"]: v["state"] for v in json.loads(core.read_text(encoding="utf-8"))["versions"]}
     assert states["2026-11-01"] == "current"
+
+
+def test_og_image_upload_and_survives_rebuild(week):
+    import struct
+    import zlib
+    conn, report, root = week
+    publish.publish(conn, "2026-11-01", actor="тест", root=root, force_sharp=True)
+    assert (root / "current" / "og.png").is_file()
+    def png(w, h):
+        raw = b"".join(b"\x00" + b"\xff" * (w * 3) for _ in range(h))
+        chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+        return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+    with pytest.raises(ValueError):
+        publish.put_og(conn, png(10, 10), root)
+    data = png(1200, 630)
+    assert publish.put_og(conn, data, root) == "2026-11-01"
+    publish.rebuild(conn, "2026-11-01", actor="тест", root=root)
+    assert (root / "current" / "og.png").read_bytes() == data
+    page = (root / "current" / "index.html").read_text(encoding="utf-8")
+    assert 'property="og:image" content="https://atlas.agpm.space/og.png"' in page
