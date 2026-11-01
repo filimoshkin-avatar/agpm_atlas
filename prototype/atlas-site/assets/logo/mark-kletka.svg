@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40" fill="none">
+<rect x="3.5" y="3.5" width="33" height="33" rx="7" stroke="currentColor" stroke-width="2.4"/>
+<path d="M20 3.5v33M3.5 20h33" stroke="currentColor" stroke-width="2.4"/>
+<circle cx="28.25" cy="11.75" r="4.1" fill="var(--logo-dot,currentColor)"/>
+</svg>
