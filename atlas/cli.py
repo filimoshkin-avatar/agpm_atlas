@@ -81,10 +81,15 @@ def cmd_build_site(args: argparse.Namespace) -> int:
 
 def cmd_week(args: argparse.Namespace) -> int:
     """Недельный прогон до даты среза включительно; версия ждёт проверки."""
+    from atlas.radar import RadarUnavailable
     model = Model(args.model) if args.model else Model()
     with db.connect() as conn:
         db.migrate(conn)
-        report = pipeline.run_week(conn, end=date.fromisoformat(args.end), model=model)
+        try:
+            report = pipeline.run_week(conn, end=date.fromisoformat(args.end), model=model)
+        except RadarUnavailable as exc:
+            print(json.dumps({"error": "radar_unavailable", "detail": str(exc)}, ensure_ascii=False))
+            return 75  # EX_TEMPFAIL: недельный запуск повторит через час
     out = {k: v for k, v in report.__dict__.items() if k != "signal_changes"}
     out["signal_changes"] = [f"{c['item']}: {c['from']} → {c['to']}" for c in report.signal_changes]
     out["model"] = {"calls": model.usage.calls, "cached": model.usage.cached, "tokens": model.usage.tokens,
@@ -153,6 +158,24 @@ def cmd_cabinet(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_summary(args: argparse.Namespace) -> int:
+    """Сводка версии для оповещения редактору."""
+    with db.connect() as conn:
+        row = conn.execute("SELECT changes FROM versions WHERE id = %s", (args.version,)).fetchone()
+        queue = conn.execute("SELECT count(*) AS n FROM queue WHERE resolved_at IS NULL").fetchone()["n"]
+    ch = row["changes"] if row and isinstance(row["changes"], dict) else {}
+    parts = [ch.get("summary", "")]
+    if ch.get("materials"):
+        parts.append("по разделам: " + ", ".join(f"{m['section']} +{m['n']}" for m in ch["materials"]))
+    names = {"confirmed": "Подтвердилось", "claimed": "Заявлено", "refuted": "Не подтвердилось"}
+    for s in ch.get("signals", []):
+        cause = f" ({s['material']})" if s.get("material") else ""
+        parts.append(f"сигнал «{s['item']}»: {names.get(s['from'], '—')} → {names.get(s['to'], '—')}{cause}")
+    parts.append(f"в очереди редактора: {queue}")
+    print("; ".join(p for p in parts if p) + ".")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="atlas")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -206,6 +229,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8790)
     p.set_defaults(func=cmd_cabinet)
+    p = sub.add_parser("summary", help="сводка версии для оповещения")
+    p.add_argument("--version", required=True)
+    p.set_defaults(func=cmd_summary)
     args = parser.parse_args(argv)
     return args.func(args)
 

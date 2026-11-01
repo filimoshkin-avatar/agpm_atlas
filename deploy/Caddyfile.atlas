@@ -1,0 +1,62 @@
+# Атлас AgPM — блок сайта для /etc/caddy/Caddyfile на Local Ru.
+# Сайт — статика текущей версии (current → releases/<версия>), снимки версий
+# /v/<дата>/ — из releases, кабинет /editor/ — служба atlas-editor на 127.0.0.1.
+# Хэши в script-src — от встроенных скриптов темы в site/page.html.j2 и
+# site/editor/base.html.j2; их совпадение проверяет tests/test_deploy.py.
+atlas.agpm.space {
+	encode zstd gzip
+
+	log {
+		output file /var/log/caddy/atlas-access.log {
+			roll_size 20MiB
+			roll_keep 3
+		}
+		format json
+	}
+
+	header {
+		-Server
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-n8fylRrbR+PN5iUUGdC/CNsu0zx0mtA+2gR/AQA2CZk=' 'sha256-CaZkDnQlfkp8F9pPI5y231L5pBwVU4nB+rSliF/erzA='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+
+	# Ассеты и данные с хэшем содержимого в имени не меняются никогда.
+	@hashed path_regexp \.[0-9a-f]{12}\.(js|css|json)$
+
+	redir /editor /editor/ 301
+	handle /editor/* {
+		reverse_proxy 127.0.0.1:8790 {
+			header_up X-Forwarded-Host {host}
+			header_down -Server
+		}
+	}
+
+	@snapshot path_regexp snap ^/v/(\d{4}-\d{2}-\d{2}(?:-\d+)?)/(.*)$
+	handle @snapshot {
+		header X-Robots-Tag "noindex"
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		root * /srv/atlas.agpm.space/releases
+		rewrite * /{re.snap.1}/{re.snap.2}
+		try_files {path} {path}index.html {path}/index.html
+		file_server
+	}
+
+	handle {
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		@pages not path_regexp \.[0-9a-f]{12}\.(js|css|json)$
+		header @pages Cache-Control "no-cache"
+		root * /srv/atlas.agpm.space/current
+		try_files {path} {path}/index.html
+		file_server
+	}
+
+	handle_errors 404 {
+		root * /srv/atlas.agpm.space/current
+		rewrite * /404.html
+		file_server
+	}
+}

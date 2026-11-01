@@ -1,0 +1,51 @@
+[Unit]
+Description=Atlas AgPM editor cabinet
+Wants=network-online.target postgresql.service
+After=network-online.target postgresql.service
+ConditionPathIsDirectory=/opt/atlas/current
+ConditionPathIsDirectory=/srv/atlas.agpm.space/releases
+
+[Service]
+Type=simple
+User=atlas
+Group=atlas
+WorkingDirectory=/opt/atlas/current
+EnvironmentFile=/etc/atlas/atlas.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/atlas/venv/bin/python -m atlas.cli cabinet --host 127.0.0.1 --port 8790
+Restart=on-failure
+RestartSec=5s
+UMask=0022
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/opt/atlas
+ReadWritePaths=/srv/atlas.agpm.space
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+AmbientCapabilities=
+SocketBindDeny=any
+SocketBindAllow=ipv4:tcp:8790
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+TasksMax=64
+MemoryMax=200M
+
+[Install]
+WantedBy=multi-user.target

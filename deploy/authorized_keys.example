@@ -1,0 +1,5 @@
+# /var/lib/atlas-tunnel/.ssh/authorized_keys — только туннель к PostgreSQL:
+restrict,port-forwarding,permitopen="127.0.0.1:5432",command="/usr/sbin/nologin" ssh-ed25519 AAAA… atlas-tunnel@fra-1
+
+# /var/lib/atlas/.ssh/authorized_keys — только «publish»:
+restrict,command="/opt/atlas/current/deploy/remote.sh" ssh-ed25519 AAAA… atlas-publish@fra-1
