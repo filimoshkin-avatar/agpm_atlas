@@ -83,7 +83,7 @@ def checks(conn, snap: dict[str, Any], prev: dict[str, Any] | None, version_row:
     if prev:
         lost = {m["id"] for m in prev["materials"]} - ids
         excluded_by_editor = {r["id"] for r in conn.execute(
-            "SELECT id FROM materials WHERE id = ANY(%s) AND status = 'excluded' AND origin <> 'manual-2026-10-09'", (list(lost),))} if lost else set()
+            "SELECT id FROM materials WHERE id = ANY(%s) AND status = 'excluded'", (list(lost),))} if lost else set()
         editor_ids = {r["object_id"].split(":")[0] for r in conn.execute("SELECT object_id FROM edits WHERE object = 'material' AND field = 'status'")}
         unexplained = lost - (excluded_by_editor & editor_ids)
         out.append(Check("losses", not unexplained, f"пропали без исключения редактором: {len(unexplained)}"))
@@ -144,6 +144,12 @@ def _build(conn, version: str, root: Path) -> tuple[Path, dict[str, Any]]:
     manifest = site.build(snap, tmp)
     tmp.rename(out)
     return out, manifest
+
+
+def preview(conn: psycopg.Connection, version: str, root: Path = SITE_ROOT) -> str:
+    """Собирает папку задержанной версии для предпросмотра по скрытому адресу /v/<версия>/ (noindex)."""
+    _build(conn, version, root)
+    return f"/v/{version}/"
 
 
 def switch_current(root: Path, version: str) -> None:

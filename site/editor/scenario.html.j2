@@ -1,0 +1,21 @@
+{% extends "cabinet.html.j2" %}{% block title %}Сценарий{% endblock %}{% block heading %}{{ item.title }}{% endblock %}
+{% block content %}
+<form class="toolbar" method="get" action="{{ prefix }}/scenario"><select name="key" aria-label="Сценарий" onchange="this.form.submit()">{% for i in items %}<option value="{{ i.key }}"{{ ' selected' if i.key == item.key }}>{% if i.kind == 'scenario' %}{{ i.corridor }}·{{ i.level }}{% elif i.kind == 'neighbor' %}Соседи·{{ i.level }}{% else %}IV·3{% endif %} · {{ i.short }}</option>{% endfor %}</select>
+<noscript><button class="btn" type="submit">Открыть</button></noscript><a class="btn" href="/scenario/{{ item.key }}/" target="_blank" rel="noopener">На сайте</a></form>
+{% set pinned = item.field_meta %}
+{% if item.kind != 'loss' %}<div class="panel"><h3>Сигнал: {{ signals[item.signal] }}{% if item.signal_origin == 'editor' %} · задан редактором: {{ item.signal_reason }}{% else %} · по правилу{% endif %}</h3>
+<form method="post" action="{{ prefix }}/scenario/{{ item.key }}/signal" class="toolbar"><input type="hidden" name="csrf" value="{{ user.csrf }}">
+<select name="signal" aria-label="Сигнал"><option value="">по правилу</option>{% for k in ['confirmed', 'claimed', 'refuted'] %}<option value="{{ k }}"{{ ' selected' if item.signal_origin == 'editor' and item.signal == k }}>{{ signals[k] }} — вручную</option>{% endfor %}</select>
+<label class="field" style="margin:0;min-width:280px"><span>Причина ручного сигнала</span><input name="reason"></label><button class="btn" type="submit">Сохранить сигнал</button></form></div>{% endif %}
+<div class="panel"><h3>Тексты</h3><form method="post" action="{{ prefix }}/scenario/{{ item.key }}"><input type="hidden" name="csrf" value="{{ user.csrf }}"><div class="two">
+<label class="field"><span>Название{% if pinned.title %} · закреплено{% endif %}</span><input name="title" value="{{ item.title }}"></label>
+<label class="field"><span>Короткое название на карточке{% if pinned.short %} · закреплено{% endif %}</span><input name="short" value="{{ item.short }}"></label></div>
+<label class="field"><span>Опорный факт под названием, до трёх строк по 38 знаков{% if pinned.card_line %} · закреплено{% endif %}</span><input name="card_line" value="{{ item.card_line }}"></label>
+<label class="field"><span>Что делает агент, до 200 знаков{% if pinned.what %} · закреплено{% endif %}</span><textarea name="what">{{ item.what }}</textarea></label>
+<label class="field"><span>Обоснование сигнала, до 400 знаков{% if pinned.why %} · закреплено{% endif %}</span><textarea name="why">{{ item.why }}</textarea></label>
+<label class="field"><span>Причина правки</span><input name="reason"></label>
+<div class="toolbar"><button class="btn primary" type="submit">Сохранить</button><span class="note">Перенос в другую клетку, объединение и снятие сценария — следующей версией кабинета.</span></div></form></div>
+<div class="panel"><h3>Материалы · {{ links | length }}, для сигнала учитываются {{ links | selectattr('counts') | list | length }}</h3>
+<table class="tbl"><tr><th>№</th><th>Материал</th><th>Роль</th><th>Для сигнала</th></tr>{% for l in links %}<tr><td class="sid">№ {{ l.num }}</td><td><a href="{{ prefix }}/material?id={{ l.material_id }}">{{ l.title }}</a><div class="sub">{{ l.outlet }} · {{ l.type }}</div></td><td>{{ l.role }}</td><td>{% if l.counts %}<span class="tag ok">да</span>{% else %}<span class="note">{{ l.basis }}</span>{% endif %}</td></tr>{% endfor %}</table></div>
+<div class="panel"><h3>История сигнала</h3><ul class="hist">{% for h in history %}<li><span class="d">{{ h.version }}</span> <span>{{ signals[h.signal] }} — {{ h.note }}</span></li>{% endfor %}</ul></div>
+{% endblock %}

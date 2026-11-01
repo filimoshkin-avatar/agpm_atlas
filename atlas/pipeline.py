@@ -317,7 +317,8 @@ def _changes(prev: dict[str, Any], cur: dict[str, Any], report: WeekReport) -> d
         "signals": [{"item": c["item"], "from": c["from"], "to": c["to"], "material": c["material"], "quote": c["quote"]} for c in report.signal_changes],
         "new_items": [],
         "materials": [{"section": secs[k], "n": n, "note": ", ".join(f"№ {m['num']}" for m in new if m["section"] == k)} for k, n in by_sec.most_common()],
-        "links": [{"text": f"№ {nums[l['material']]} → {items[l['item']]}: {l['role']}{' (учитывается для сигнала)' if l['counts'] else ''}"} for l in new_links],
+        "links": [{"text": f"№ {nums[l['material']]} → {items[l['item']]}: {l['role']}{' (учитывается для сигнала)' if l['counts'] else ''}",
+                   "material": l["material"], "item": l["item"], "num": nums[l["material"]]} for l in new_links],
         "sheet": [
             {"text": f"{'Снят' if not s['shown'] else 'Показан'} вывод «{key}»"}
             for key, s in cur["computed"]["sheet_texts"].items()

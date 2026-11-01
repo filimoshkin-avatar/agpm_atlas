@@ -21,7 +21,9 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from atlas import ROOT, db, publish
+from datetime import date as _date
+
+from atlas import ROOT, db, editor, publish
 
 PREFIX = "/editor"
 SESSION_HOURS = 12
@@ -119,6 +121,29 @@ class Cabinet:
                 return self.do_publish(conn, user, sub.split("/")[2], form)
             if method == "POST" and sub.startswith("/rollback/"):
                 return self.do_rollback(conn, user, sub.split("/")[2], form)
+            parts = sub.strip("/").split("/")
+            query = {k: v[0] for k, v in parse_qs(environ.get("QUERY_STRING", "")).items()}
+            try:
+                if sub == "/material" and method == "GET":
+                    return self.material(conn, user, query)
+                if parts[0] == "material" and method == "POST" and len(parts) >= 2:
+                    return self.material_post(conn, user, parts, form)
+                if parts[0] == "link" and method == "POST" and len(parts) >= 3:
+                    return self.link_post(conn, user, parts, form)
+                if sub == "/scenario" and method == "GET":
+                    return self.scenario(conn, user, query)
+                if parts[0] == "scenario" and method == "POST" and len(parts) >= 2:
+                    return self.scenario_post(conn, user, parts, form)
+                if sub == "/versions" and method == "GET":
+                    return self.versions(conn, user, query)
+                if sub == "/release" and method == "POST":
+                    return self.release_now(conn, user, form)
+            except (ValueError, LookupError) as exc:
+                conn.rollback()
+                back = environ.get("HTTP_REFERER") or f"{PREFIX}/feed"
+                back = back.split("&m=")[0].split("?m=")[0]
+                sep = "&" if "?" in back else "?"
+                return redirect(f"{back}{sep}m=Не сохранено: {str(exc)[:200]}")
             if method == "POST" and sub.startswith("/queue/") and sub.endswith("/resolve"):
                 conn.execute("UPDATE queue SET resolved_at = now() WHERE id = %s AND resolved_at IS NULL", (int(sub.split("/")[2]),))
                 conn.execute("INSERT INTO edits (actor, object, object_id, field, after, reason) VALUES (%s, 'queue', %s, 'resolved', 'true', %s)",
@@ -178,6 +203,9 @@ class Cabinet:
         counts = {
             "versions": conn.execute("SELECT count(*) AS n FROM versions").fetchone()["n"],
             "queue": conn.execute("SELECT count(*) AS n FROM queue WHERE resolved_at IS NULL").fetchone()["n"],
+            "materials": conn.execute("SELECT count(*) AS n FROM materials WHERE status = 'in_atlas'").fetchone()["n"],
+            "items": conn.execute("SELECT count(*) AS n FROM items").fetchone()["n"],
+            "pending": conn.execute("SELECT count(*) AS n FROM edits WHERE version IS NULL AND object <> 'version'").fetchone()["n"],
         }
         return Response(_env.get_template(template).render(user=user, prefix=PREFIX, counts=counts, signals=SIGNALS, states=STATES, **ctx))
 
@@ -192,6 +220,138 @@ class Cabinet:
         for r in rows:
             groups.setdefault(r["kind"], []).append(r)
         return self._page("queue.html.j2", user, conn, groups=groups, active="queue")
+
+    # ---------- материал ----------
+
+    def _refs(self, conn) -> dict[str, Any]:
+        return {
+            "sections": conn.execute("SELECT key, short FROM ref_sections ORDER BY position").fetchall(),
+            "practices": conn.execute("SELECT key, name FROM ref_practices ORDER BY position").fetchall(),
+            "types": [r["name"] for r in conn.execute("SELECT name FROM ref_types ORDER BY position")],
+            "roles": conn.execute("SELECT name, default_grade FROM ref_roles ORDER BY position").fetchall(),
+            "items": conn.execute("SELECT key, short, kind, corridor, level FROM items WHERE kind <> 'loss' ORDER BY position").fetchall(),
+            "grades": {"confirms": "подтверждает", "claims": "заявляет", "warns": "предупреждает", "refutes": "опровергает", "background": "фон"},
+        }
+
+    def material(self, conn, user, query) -> Response:
+        if query.get("num"):
+            row = conn.execute("SELECT * FROM materials WHERE num = %s", (int(query["num"]),)).fetchone()
+        elif query.get("id"):
+            row = conn.execute("SELECT * FROM materials WHERE id = %s", (query["id"],)).fetchone()
+        else:
+            row = None
+        ctx: dict[str, Any] = {"m": row, "query": query, "message": query.get("m", ""), "active": "material"}
+        if row:
+            ctx["links"] = conn.execute(
+                "SELECT l.*, i.short FROM links l JOIN items i ON i.key = l.item_key WHERE material_id = %s ORDER BY i.position", (row["id"],)).fetchall()
+            ctx["source"] = conn.execute("SELECT origin, status, text, detail, fetched_at FROM source_texts WHERE url_norm = %s", (row["url_norm"],)).fetchone()
+            ctx["decision"] = conn.execute(
+                "SELECT d.data, d.model, d.prompt_version FROM decisions d JOIN radar_records r ON r.radar_id = d.radar_id WHERE r.material_id = %s ORDER BY d.id DESC LIMIT 1",
+                (row["id"],)).fetchone()
+            ctx["records"] = conn.execute("SELECT radar_id, issue_date FROM radar_records WHERE material_id = %s ORDER BY issue_date", (row["id"],)).fetchall()
+            ctx["edits"] = conn.execute("SELECT * FROM edits WHERE object_id = %s OR object_id LIKE %s ORDER BY id DESC LIMIT 30",
+                                        (row["id"], row["id"] + ":%")).fetchall()
+        ctx.update(self._refs(conn))
+        return self._page("material.html.j2", user, conn, **ctx)
+
+    def material_post(self, conn, user, parts: list[str], form: dict[str, str]) -> Response:
+        mid = parts[1]
+        action = parts[2] if len(parts) > 2 else "save"
+        back = f"{PREFIX}/material?id={mid}"
+        if action == "save":
+            changes: dict[str, Any] = {k: form[k].strip() for k in ("title", "title_orig", "summary", "takeaway", "type", "evidence", "section") if k in form}
+            if "practice" in form:
+                changes["practice"] = form["practice"] or None
+            if "pub_date" in form:
+                changes["pub_date"] = form["pub_date"] or None
+            if "flags" in form:
+                changes["flags"] = [f.strip() for f in form["flags"].split(",") if f.strip()]
+            if "numbers" in form:
+                changes["numbers"] = [n.strip() for n in form["numbers"].splitlines() if n.strip()]
+            changed = editor.edit_material(conn, mid, actor=user["email"], reason=form.get("reason", ""), **changes)
+            conn.commit()
+            return redirect(f"{back}&m=Сохранено полей: {len(changed)}; попадёт в следующую версию")
+        if action == "exclude":
+            n = editor.exclude_material(conn, mid, actor=user["email"], reason=form.get("reason", ""))
+            conn.commit()
+            return redirect(f"{back}&m=Материал исключён, снято связей: {n}")
+        if action == "link":
+            editor.add_link(conn, mid, form["item"], actor=user["email"], reason=form.get("reason", ""), role=form["role"],
+                            grade=form["grade"], counts=form.get("counts") == "1", basis=form.get("basis", ""))
+            conn.commit()
+            return redirect(f"{back}&m=Связь добавлена")
+        raise LookupError("неизвестное действие")
+
+    def link_post(self, conn, user, parts: list[str], form: dict[str, str]) -> Response:
+        mid, item = parts[1], parts[2]
+        action = parts[3] if len(parts) > 3 else "save"
+        back = form.get("back") or f"{PREFIX}/material?id={mid}"
+        sep = "&" if "?" in back else "?"
+        if action == "remove":
+            editor.remove_link(conn, mid, item, actor=user["email"], reason=form.get("reason", ""))
+            conn.commit()
+            return redirect(f"{back}{sep}m=Связь снята")
+        if action == "accept":
+            editor._journal(conn, user["email"], "link", f"{mid}:{item}", "accepted", None, True, form.get("reason", "принято"))
+            conn.commit()
+            return redirect(f"{back}{sep}m=Принято")
+        changes: dict[str, Any] = {}
+        for k in ("role", "grade", "basis"):
+            if k in form:
+                changes[k] = form[k]
+        if action == "pin" or "counts" in form or "role" in form:
+            changes["counts"] = form.get("counts") == "1" if "role" in form else conn.execute(
+                "SELECT counts FROM links WHERE material_id = %s AND item_key = %s", (mid, item)).fetchone()["counts"]
+        reason = form.get("reason", "") or ("закреплено редактором" if action == "pin" else "")
+        editor.edit_link(conn, mid, item, actor=user["email"], reason=reason, **changes)
+        conn.commit()
+        return redirect(f"{back}{sep}m={'Связь закреплена' if action == 'pin' else 'Связь сохранена'}")
+
+    # ---------- сценарий ----------
+
+    def scenario(self, conn, user, query) -> Response:
+        key = query.get("key") or "B1_drafts"
+        item = conn.execute("SELECT * FROM items WHERE key = %s", (key,)).fetchone()
+        if item is None:
+            return Response("Не найдено", "404 Not Found")
+        links = conn.execute(
+            """SELECT l.*, m.num, m.title, m.outlet, m.type FROM links l JOIN materials m ON m.id = l.material_id
+               WHERE l.item_key = %s ORDER BY l.counts DESC, m.num""", (key,)).fetchall()
+        history = conn.execute("SELECT * FROM item_history WHERE item_key = %s ORDER BY version", (key,)).fetchall()
+        items = conn.execute("SELECT key, short, kind, corridor, level FROM items ORDER BY position").fetchall()
+        return self._page("scenario.html.j2", user, conn, item=item, links=links, history=history, items=items,
+                          message=query.get("m", ""), active="scenario")
+
+    def scenario_post(self, conn, user, parts: list[str], form: dict[str, str]) -> Response:
+        key = parts[1]
+        back = f"{PREFIX}/scenario?key={key}"
+        if len(parts) > 2 and parts[2] == "signal":
+            editor.set_signal(conn, key, form.get("signal") or None, actor=user["email"], reason=form.get("reason", ""))
+            conn.commit()
+            return redirect(f"{back}&m=Сигнал сохранён; попадёт в следующую версию")
+        changes = {k: form[k].strip() for k in editor.ITEM_FIELDS if k in form}
+        changed = editor.edit_item(conn, key, actor=user["email"], reason=form.get("reason", ""), **changes)
+        conn.commit()
+        return redirect(f"{back}&m=Сохранено полей: {len(changed)}")
+
+    # ---------- версии и «Выпустить сейчас» ----------
+
+    def versions(self, conn, user, query) -> Response:
+        versions = conn.execute("SELECT id, slice, title, state, changes FROM versions ORDER BY slice DESC, id DESC").fetchall()
+        pending = editor.editorial_lines(conn)
+        return self._page("versions.html.j2", user, conn, versions=versions, pending=pending,
+                          message=query.get("m", ""), active="versions")
+
+    def release_now(self, conn, user, form: dict[str, str]) -> Response:
+        lines = editor.editorial_lines(conn)
+        if not lines:
+            return redirect(f"{PREFIX}/versions?m=Правок для выпуска нет")
+        vid = editor.next_version_id(conn, _date.today())
+        editor.release_edits(conn, version=vid, slice_date=_date.fromisoformat(vid[:10]),
+                             title=form.get("title") or "Уточнения редакции", editorial=lines)
+        conn.commit()
+        url = publish.preview(conn, vid, self.site_root)
+        return redirect(f"{PREFIX}/versions?m=Собрана версия {vid}: предпросмотр {url}, опубликовать — в ленте")
 
     def do_publish(self, conn, user, version: str, form: dict[str, str]) -> Response:
         try:

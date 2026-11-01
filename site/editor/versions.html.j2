@@ -1,0 +1,11 @@
+{% extends "cabinet.html.j2" %}{% block title %}Версии{% endblock %}{% block heading %}Версии{% endblock %}
+{% block content %}
+<div class="panel"><h3>Правки, ещё не вошедшие в версию · {{ pending | length }}</h3>
+{% if pending %}<ul>{% for p in pending %}<li class="note">{{ p }}</li>{% endfor %}</ul>
+<form method="post" action="{{ prefix }}/release" class="toolbar"><input type="hidden" name="csrf" value="{{ user.csrf }}"><label class="field" style="margin:0;min-width:320px"><span>Название версии</span><input name="title" value="Уточнения редакции"></label>
+<button class="btn primary" type="submit">Выпустить сейчас</button><span class="note">Соберётся задержанная версия с предпросмотром по скрытому адресу; опубликовать — в ленте, с теми же проверками.</span></form>
+{% else %}<p class="note">Правок нет. Правки попадут на сайт со следующей недельной версией или по кнопке «Выпустить сейчас».</p>{% endif %}</div>
+<div class="panel"><table class="tbl"><tr><th>Версия</th><th>Название</th><th>Состояние</th><th></th></tr>{% for v in versions %}{% set ch = v.changes if v.changes is mapping else {} %}
+<tr><td class="sid">{{ v.id }}</td><td><b>{{ v.title }}</b><div class="sub">{{ ch.summary or 'первая версия архива, ручная разметка' }}</div></td><td><span class="tag{{ ' ok' if v.state == 'current' }}">{{ states[v.state] }}</span></td>
+<td>{% if v.state == 'held' %}<a class="btn small" href="/v/{{ v.id }}/" target="_blank" rel="noopener">Предпросмотр</a>{% else %}<a class="btn small" href="/versions/{{ v.id }}/" target="_blank" rel="noopener">Что изменилось</a>{% endif %}</td></tr>{% endfor %}</table></div>
+{% endblock %}

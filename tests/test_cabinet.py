@@ -95,3 +95,45 @@ def test_password_change_closes_sessions(app):
     assert req(a, "GET", "/editor/feed", cookie=cookie).status.startswith("303")
     r = req(a, "POST", "/editor/login", {"email": "ed@agpm.space", "password": "новый-пароль"}, origin="https://atlas.test")
     assert r.status.startswith("303") and "Set-Cookie" in dict(r.headers)
+
+
+def _csrf(conn):
+    return conn.execute("SELECT csrf FROM sessions ORDER BY created_at DESC LIMIT 1").fetchone()["csrf"]
+
+
+def test_material_screen_edit_link_and_exclude(app):
+    a, conn = app
+    cookie = _login(a)
+    page = req(a, "GET", "/editor/material", cookie=cookie, query="num=117").body.decode()
+    assert "№ 117" in page and "Связи со сценариями" in page and "Подсказки и черновики планов" in page
+    o = "https://atlas.test"
+    r = req(a, "POST", "/editor/material/m000117/save", {"csrf": _csrf(conn), "summary": "Новая суть обзора.", "reason": "правка"}, cookie=cookie, origin=o)
+    assert "Сохранено полей: 1" in dict(r.headers)["Location"]
+    assert conn.execute("SELECT summary FROM materials WHERE id = 'm000117'").fetchone()["summary"] == "Новая суть обзора."
+    r = req(a, "POST", "/editor/material/m000001/link", {"csrf": _csrf(conn), "item": "A2_intake", "role": "продукт",
+            "grade": "claims", "reason": "проверка"}, cookie=cookie, origin=o)
+    assert "Связь добавлена" in dict(r.headers)["Location"]
+    r = req(a, "POST", "/editor/material/m000001/exclude", {"csrf": _csrf(conn), "reason": ""}, cookie=cookie, origin=o)
+    assert "Не сохранено" in dict(r.headers)["Location"]
+    r = req(a, "POST", "/editor/material/m000001/exclude", {"csrf": _csrf(conn), "reason": "не об агентах"}, cookie=cookie, origin=o)
+    assert "исключён" in dict(r.headers)["Location"]
+    assert conn.execute("SELECT status FROM materials WHERE id = 'm000001'").fetchone()["status"] == "excluded"
+
+
+def test_scenario_signal_and_release_now(app):
+    a, conn = app
+    cookie = _login(a)
+    o = "https://atlas.test"
+    assert "История сигнала" in req(a, "GET", "/editor/scenario", cookie=cookie, query="key=B1_drafts").body.decode()
+    r = req(a, "POST", "/editor/scenario/B1_drafts/signal", {"csrf": _csrf(conn), "signal": "confirmed", "reason": ""}, cookie=cookie, origin=o)
+    assert "Не сохранено" in dict(r.headers)["Location"]
+    req(a, "POST", "/editor/scenario/B1_drafts/signal", {"csrf": _csrf(conn), "signal": "confirmed", "reason": "решение редакции"}, cookie=cookie, origin=o)
+    page = req(a, "GET", "/editor/versions", cookie=cookie).body.decode()
+    assert "сигнал задан редактором" in page and "Выпустить сейчас" in page
+    r = req(a, "POST", "/editor/release", {"csrf": _csrf(conn), "title": "Уточнения"}, cookie=cookie, origin=o)
+    loc = dict(r.headers)["Location"]
+    assert "Собрана версия" in loc and "/v/" in loc
+    vid = conn.execute("SELECT id FROM versions WHERE state = 'held' ORDER BY created_at DESC LIMIT 1").fetchone()["id"]
+    assert (a.site_root / "releases" / vid / "index.html").is_file()
+    snap = conn.execute("SELECT snapshot FROM versions WHERE id = %s", (vid,)).fetchone()["snapshot"]
+    assert next(i for i in snap["items"] if i["key"] == "B1_drafts")["signal"] == "confirmed"

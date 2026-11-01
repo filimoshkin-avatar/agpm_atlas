@@ -1,0 +1,50 @@
+{% extends "cabinet.html.j2" %}{% block title %}Материал{% endblock %}{% block heading %}{% if m %}№ {{ m.num or '—' }} · {{ m.outlet }}{% else %}Материалы{% endif %}{% endblock %}
+{% block content %}
+<form class="toolbar" method="get" action="{{ prefix }}/material"><label class="field" style="margin:0;min-width:200px"><span>Номер материала</span><input name="num" value="{{ m.num if m and m.num else query.num or '' }}" inputmode="numeric"></label><button class="btn" type="submit">Открыть</button>
+{% if m and m.num %}<a class="btn" href="/m/{{ m.num }}/" target="_blank" rel="noopener">На сайте</a>{% endif %}</form>
+{% if not m %}<div class="panel"><p class="note">Введите номер материала, например 836.</p></div>{% else %}
+{% set pinned = m.field_meta %}
+<div class="panel"><h3>{{ m.title }}</h3>
+<p class="note">Статус: {{ {'in_atlas': 'в атласе', 'excluded': 'исключён', 'duplicate': 'дубль'}[m.status] }}{% if m.status_reason %} — {{ m.status_reason }}{% endif %} · происхождение: {{ m.origin }} · описание: {{ {'verified': 'сверено с источником', 'radar': 'из выпуска радара', 'title': 'по названию', 'none': 'нет'}[m.desc_origin] }}
+· выпуски радара: {% for r in records %}{{ r.issue_date | ru_date }}{{ ', ' if not loop.last }}{% else %}{% for d in m.radar_dates %}{{ d | ru_date }}{{ ', ' if not loop.last }}{% endfor %}{% endfor %} · <a href="{{ m.url }}" target="_blank" rel="noopener noreferrer">источник</a></p>
+{% if m.status == 'in_atlas' %}<form method="post" action="{{ prefix }}/material/{{ m.id }}/save"><input type="hidden" name="csrf" value="{{ user.csrf }}"><div class="two">
+{% macro lab(name, label) %}<span>{{ label }}{% if pinned[name] %} · закреплено{% endif %}</span>{% endmacro %}
+<label class="field">{{ lab('title', 'Название') }}<input name="title" value="{{ m.title }}"></label>
+<label class="field">{{ lab('title_orig', 'Название в оригинале') }}<input name="title_orig" value="{{ m.title_orig }}"></label>
+<label class="field">{{ lab('section', 'Раздел') }}<select name="section">{% for s in sections %}<option value="{{ s.key }}"{{ ' selected' if s.key == m.section }}>{{ s.short }}</option>{% endfor %}</select></label>
+<label class="field">{{ lab('practice', 'Практика (только для «Практик контроля»)') }}<select name="practice"><option value="">—</option>{% for p in practices %}<option value="{{ p.key }}"{{ ' selected' if p.key == m.practice }}>{{ p.name }}</option>{% endfor %}</select></label>
+<label class="field">{{ lab('type', 'Тип') }}<select name="type">{% for ty in types %}<option{{ ' selected' if ty == m.type }}>{{ ty }}</option>{% endfor %}</select></label>
+<label class="field">{{ lab('evidence', 'Доказательность') }}<select name="evidence">{% for e in ['сильная', 'средняя', 'слабая'] %}<option{{ ' selected' if e == m.evidence }}>{{ e }}</option>{% endfor %}</select></label>
+<label class="field">{{ lab('pub_date', 'Дата публикации') }}<input name="pub_date" type="date" value="{{ m.pub_date or '' }}"></label>
+<label class="field">{{ lab('flags', 'Флаги через запятую') }}<input name="flags" value="{{ m.flags | join(', ') }}"></label></div>
+<label class="field">{{ lab('summary', 'Суть') }}<textarea name="summary">{{ m.summary }}</textarea></label>
+<label class="field">{{ lab('numbers', 'Цифры — по одной в строке') }}<textarea name="numbers">{% for n in m.numbers %}{{ n.text }}
+{% endfor %}</textarea></label>
+<label class="field">{{ lab('takeaway', 'Вывод для проектной работы') }}<textarea name="takeaway">{{ m.takeaway }}</textarea></label>
+<label class="field"><span>Причина правки</span><input name="reason"></label>
+<div class="toolbar"><button class="btn primary" type="submit">Сохранить и закрепить</button></div></form>
+<form method="post" action="{{ prefix }}/material/{{ m.id }}/exclude" class="toolbar"><input type="hidden" name="csrf" value="{{ user.csrf }}"><label class="field" style="margin:0;min-width:320px"><span>Причина исключения</span><input name="reason" required placeholder="например: не об ИИ-агентах"></label><button class="btn danger" type="submit">Исключить из атласа</button></form>{% endif %}</div>
+
+<div class="panel"><h3>Связи со сценариями · {{ links | length }}</h3>
+{% for l in links %}<form method="post" action="{{ prefix }}/link/{{ m.id }}/{{ l.item_key }}" class="toolbar" style="border-bottom:1px solid var(--line);padding-bottom:12px"><input type="hidden" name="csrf" value="{{ user.csrf }}">
+<b style="min-width:180px">{{ l.short }}</b>
+<select name="role" aria-label="Роль">{% for r in roles %}<option{{ ' selected' if r.name == l.role }}>{{ r.name }}</option>{% endfor %}</select>
+<select name="grade" aria-label="Оценка">{% for k, v in grades.items() %}<option value="{{ k }}"{{ ' selected' if k == l.grade }}>{{ v }}</option>{% endfor %}</select>
+<label><input type="checkbox" name="counts" value="1"{{ ' checked' if l.counts }}> для сигнала</label>{% if l.pinned %}<span class="tag">закреплено</span>{% endif %}
+<input name="reason" placeholder="причина" aria-label="Причина">
+<button class="btn small" type="submit">Сохранить</button>
+<button class="btn small danger" type="submit" formaction="{{ prefix }}/link/{{ m.id }}/{{ l.item_key }}/remove">Снять</button>
+<div class="note" style="flex-basis:100%">{{ l.basis }}{% if l.quote %} — «{{ l.quote }}»{% endif %}</div></form>{% else %}<p class="note">Связей нет.</p>{% endfor %}
+{% if m.status == 'in_atlas' %}<form method="post" action="{{ prefix }}/material/{{ m.id }}/link" class="toolbar"><input type="hidden" name="csrf" value="{{ user.csrf }}">
+<select name="item" aria-label="Сценарий">{% for i in items %}<option value="{{ i.key }}">{{ i.short }}</option>{% endfor %}</select>
+<select name="role" aria-label="Роль">{% for r in roles %}<option>{{ r.name }}</option>{% endfor %}</select>
+<select name="grade" aria-label="Оценка">{% for k, v in grades.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+<label><input type="checkbox" name="counts" value="1"> для сигнала</label><input name="reason" placeholder="причина" required aria-label="Причина"><button class="btn" type="submit">Добавить связь</button></form>{% endif %}</div>
+
+{% if decision %}<div class="panel"><h3>Решение модели · {{ decision.model }} · {{ decision.prompt_version }}</h3>
+<p class="note">Сверка: {{ decision.data.verdict }} · кто говорит: {{ decision.data.speaker }}</p>
+{% if decision.data.discrepancies %}<ul>{% for d in decision.data.discrepancies %}<li class="note">{{ d }}</li>{% endfor %}</ul>{% endif %}
+{% for l in decision.data.links %}<p class="note"><b>{{ l.item }}</b> — {{ l.role }}: {{ l.basis }}{% if l.quote %}<br>«{{ l.quote }}»{% endif %}</p>{% endfor %}</div>{% endif %}
+{% if source %}<div class="panel"><h3>Текст источника · {{ source.origin }} / {{ source.status }}</h3>{% if source.text %}<details><summary class="note">{{ source.text | length }} знаков, развернуть</summary><pre style="white-space:pre-wrap;font-size:13px">{{ source.text[:20000] }}</pre></details>{% else %}<p class="note">{{ source.detail }}</p>{% endif %}</div>{% endif %}
+{% if edits %}<div class="panel"><h3>Журнал правок</h3><ul class="feed">{% for e in edits %}<li><div><div class="what">{{ e.field }}: {{ e.before }} → {{ e.after }}</div><div class="why">{{ e.at | ru_date }} · {{ e.actor }}{% if e.reason %} · {{ e.reason }}{% endif %}{% if e.version %} · в версии {{ e.version }}{% endif %}</div></div></li>{% endfor %}</ul></div>{% endif %}
+{% endif %}{% endblock %}
