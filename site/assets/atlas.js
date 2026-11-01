@@ -9,6 +9,13 @@
   const BASE = (location.pathname.match(/^\/v\/\d{4}-\d{2}-\d{2}(?:-\d+)?\//) || ['/'])[0];
   const ASSET_ROOT = new URL(HTML.dataset.root || './', location.href).href;
   const fetchJSON = async name => { const r = await fetch(ASSET_ROOT + name); if (!r.ok) throw new Error(name + ': ' + r.status); return r.json(); };
+  /* Ссылки шапки и подвала в разметке относительные, чтобы одна папка версии служила и «/», и «/v/<дата>/».
+     После перехода без перезагрузки браузер считал бы их от нового адреса (/sections/method/index/…),
+     поэтому сразу при загрузке они переводятся в абсолютные пути от настоящего адреса страницы. */
+  document.querySelectorAll('a[href]').forEach(a => {
+    const h = a.getAttribute('href');
+    if (h && !/^([a-z]+:|\/|#)/i.test(h)) a.setAttribute('href', new URL(h, location.href).pathname);
+  });
   const D = await fetchJSON(HTML.dataset.core);
   const C = D.computed;
   const NEW = new Set(C.new_materials || []);
@@ -438,6 +445,30 @@
     nav(url.pathname + url.search, true);
   });
   window.addEventListener('popstate', () => route(false));
+  /* Шапка прячется при прокрутке вниз и выплывает при прокрутке вверх; при фокусе с клавиатуры видна всегда. */
+  const top = document.querySelector('.top');
+  let lastY = window.scrollY, ticking = false;
+  window.addEventListener('scroll', () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      const y = window.scrollY, h = top.offsetHeight;
+      if (y > lastY + 4 && y > h) top.classList.add('hide');
+      else if (y < lastY - 4 || y <= h) top.classList.remove('hide');
+      lastY = y; ticking = false;
+    });
+  }, { passive: true });
+  top.addEventListener('focusin', () => top.classList.remove('hide'));
+  /* Знак атласа: на главной — быстро наверх, с других страниц — на главную, сразу наверху. */
+  const reduced = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.querySelector('.top .brand').addEventListener('click', e => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (parseHash().parts.length) nav(BASE, true);
+    else { history.replaceState(null, '', BASE); window.scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' }); }
+    top.classList.remove('hide');
+  });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && parseHash().parts[0] === 'scenario' && !(e.target.closest && e.target.closest('input,select,textarea'))) nav(BASE, false); });
   document.getElementById('qform').addEventListener('submit', e => {
     e.preventDefault();

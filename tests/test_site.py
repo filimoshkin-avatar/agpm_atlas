@@ -72,3 +72,16 @@ def test_built_version_folder_is_immutable(built):
     snap, out, _ = built
     with pytest.raises(FileExistsError):
         site.build(snap, out)
+
+
+def test_stylesheets_have_balanced_braces():
+    """Лишняя «}» молча выбрасывает следующее правило (так пропала закреплённая шапка)."""
+    from atlas import ROOT
+    for name in ("atlas.css", "fonts.css"):
+        depth = 0
+        text = (ROOT / "site" / "assets" / name).read_text(encoding="utf-8")
+        import re
+        for ch in re.sub(r"/\*.*?\*/", "", text, flags=re.S):
+            depth += {"{": 1, "}": -1}.get(ch, 0)
+            assert depth >= 0, f"{name}: лишняя «}}»"
+        assert depth == 0, f"{name}: незакрытая «{{»"

@@ -422,4 +422,9 @@ footer .links a:hover { color:var(--tx); text-decoration:underline; }
 /* Сборка сайта: строка «с прошлой версии», флажок фильтра. */
 .slice .since { display:block; width:100%; margin-top:4px; color:var(--tx2); font-size:14px; }
 .filters .chk { display:inline-flex; gap:8px; align-items:center; font-size:14px; color:var(--tx2); }
-}
+/* Сборка сайта: шапка закреплена, прячется при прокрутке вниз, выплывает при прокрутке вверх. */
+.top { position:sticky; top:0; z-index:40; background:var(--bg); transition:transform .25s var(--ease); }
+.top.hide { transform:translateY(-100%); }
+#passport { scroll-margin-top:16px; }
+@media (prefers-reduced-motion: reduce) { .top { transition:none; } }
+@media print { .top { position:static; transform:none !important; } }
