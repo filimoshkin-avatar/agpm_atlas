@@ -86,7 +86,7 @@ const ok = (name, cond, detail) => { res[name] = cond ? 'ok' : `НЕТ: ${JSON.s
     await p.context().close(); }
   // 11. меньше движения: паспорт без плавной прокрутки
   { const p = await ctx(1440, { reducedMotion: 'reduce' }); await p.goto(BASE, { waitUntil: 'networkidle' });
-    await p.click('a.sc[href$="/scenario/V4_auto/"]'); await p.waitForTimeout(150);
+    await p.click('a.sc[href$="/scenario/V4_auto/"]'); await p.waitForSelector('#passport .pp-title'); await p.waitForTimeout(150);
     const y = await p.evaluate(() => scrollY);
     ok('11 reduced motion: паспорт сразу', y > 500, y);
     await p.context().close(); }
