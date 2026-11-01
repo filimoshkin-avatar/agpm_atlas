@@ -146,6 +146,13 @@ def cmd_publish(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_rebuild(args: argparse.Namespace) -> int:
+    with db.connect() as conn:
+        out = publish.rebuild(conn, args.version, actor=args.actor, root=args.root or publish.SITE_ROOT)
+    print(json.dumps(out, ensure_ascii=False))
+    return 0
+
+
 def cmd_rollback(args: argparse.Namespace) -> int:
     with db.connect() as conn:
         out = publish.rollback(conn, args.version, actor=args.actor, reason=args.reason, root=args.root or publish.SITE_ROOT)
@@ -237,6 +244,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--actor", default="автоматика")
     p.add_argument("--root", type=Path)
     p.set_defaults(func=cmd_publish)
+    p = sub.add_parser("rebuild-site", help="пересобрать папку версии из её снимка под новый код сайта")
+    p.add_argument("--version", required=True)
+    p.add_argument("--actor", default="выкладка кода")
+    p.add_argument("--root", type=Path)
+    p.set_defaults(func=cmd_rebuild)
     p = sub.add_parser("rollback", help="вернуть сайт и данные к опубликованной версии")
     p.add_argument("--version", required=True)
     p.add_argument("--reason", required=True)

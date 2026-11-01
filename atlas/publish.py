@@ -135,15 +135,47 @@ def _build(conn, version: str, root: Path) -> tuple[Path, dict[str, Any]]:
     if out.exists():
         manifest = json.loads((out / "MANIFEST.json").read_text(encoding="utf-8"))
         return out, manifest
+    tmp, manifest = _build_aside(conn, version, row["snapshot"], root)
+    tmp.rename(out)
+    return out, manifest
+
+
+def _build_aside(conn, version: str, stored: dict[str, Any], root: Path) -> tuple[Path, dict[str, Any]]:
+    """Сборка во временную папку рядом с releases/<версия>."""
     tmp = root / "releases" / f".{version}.building"
     if tmp.exists():
         import shutil
         shutil.rmtree(tmp)
-    snap = dict(row["snapshot"])
+    snap = dict(stored)
     snap["versions"] = _versions_overlay(conn)
-    manifest = site.build(snap, tmp)
+    snap["computed"] = {**snap["computed"], **snapshot.archive_overlay(conn, snap)}
+    return tmp, site.build(snap, tmp)
+
+
+def rebuild(conn: psycopg.Connection, version: str, *, actor: str, root: Path = SITE_ROOT) -> dict[str, Any]:
+    """Пересборка папки версии из её неизменного снимка — для нового кода сайта.
+
+    Данные версии не меняются; новая папка собирается рядом и подменяет старую
+    одной заменой имени. Ассеты с новым хэшем ложатся по новым адресам, страницы
+    отдаются no-cache, поэтому кэш читателей не мешает. Старая папка остаётся
+    рядом с меткой времени до чистки.
+    """
+    out = root / "releases" / version
+    if not out.exists():
+        raise LookupError(f"папки версии {version} нет — сначала публикация")
+    row = conn.execute("SELECT snapshot, snapshot_sha256 FROM versions WHERE id = %s", (version,)).fetchone()
+    if snapshot.sha256(row["snapshot"]) != row["snapshot_sha256"]:
+        raise PublishBlocked([f"снимок {version} не совпадает со своим sha256"])
+    tmp, manifest = _build_aside(conn, version, row["snapshot"], root)
+    failed = [c for c in site_checks(tmp, manifest) if not c.ok]
+    if failed:
+        raise PublishBlocked([f"{c.id}: {c.detail}" for c in failed])
+    import time
+    stale = root / "releases" / f".{version}.replaced-{int(time.time())}"
+    out.rename(stale)  # две замены имени подряд: окно без папки — доли миллисекунды
     tmp.rename(out)
-    return out, manifest
+    _journal(conn, actor, version, "rebuild", str(stale.name))
+    return {"version": version, "replaced": stale.name, "pages": manifest["pages"]}
 
 
 def preview(conn: psycopg.Connection, version: str, root: Path = SITE_ROOT) -> str:

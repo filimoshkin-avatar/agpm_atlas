@@ -118,6 +118,28 @@ def computed(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def archive_overlay(conn, data: dict[str, Any]) -> dict[str, Any]:
+    """Представление архива для сайта версии — не часть неизменяемого снимка:
+    история пунктов по версиям до этой включительно (сигнал и число материалов)
+    и материалы, новые относительно предыдущей версии."""
+    vid = data["version"]["id"]
+    rows = conn.execute(
+        """SELECT id, slice, snapshot->'computed'->'item_materials' AS im, snapshot->'computed'->'signals' AS sig,
+                  jsonb_path_query_array(snapshot->'materials', '$[*].id') AS ids
+           FROM versions WHERE state <> 'rolled_back' AND (slice, id) <= (%s::date, %s) ORDER BY slice, id""",
+        (data["version"]["slice"], vid)).fetchall()
+    history: dict[str, list[dict[str, Any]]] = {i["key"]: [] for i in data["items"]}
+    for r in rows:
+        for key in history:
+            if key in (r["im"] or {}):
+                history[key].append({"version": r["id"], "date": r["slice"].isoformat(),
+                                     "signal": (r["sig"] or {}).get(key, {}).get("value"), "materials": r["im"][key]})
+    prev = next((r for r in rows if r["id"] == data["version"].get("prev")), None)
+    prev_ids = set(prev["ids"]) if prev else None
+    new_ids = [m["id"] for m in data["materials"] if prev_ids is not None and m["id"] not in prev_ids]
+    return {"item_history": history, "new_materials": new_ids}
+
+
 def build(conn: psycopg.Connection, version: dict[str, Any], versions: list[dict[str, Any]]) -> dict[str, Any]:
     """Собирает снимок из текущего состояния базы."""
     data: dict[str, Any] = {

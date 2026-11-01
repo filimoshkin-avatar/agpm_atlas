@@ -58,3 +58,16 @@ def test_rollback_restores_site_and_data_and_marks_reverted(week):
     assert conn.execute("SELECT count(*) AS n FROM number_ledger WHERE num >= 798").fetchone()["n"] == before - 794
     assert conn.execute("SELECT count(*) AS n FROM radar_records WHERE state = 'new'").fetchone()["n"] == 0
     assert conn.execute("SELECT count(*) AS n FROM edits WHERE field = 'rollback'").fetchone()["n"] == 1
+
+
+def test_rebuild_swaps_folder_under_same_name(week):
+    conn, report, root = week
+    publish.publish(conn, "2026-11-01", actor="тест", root=root, force_sharp=True)
+    before = sorted(p.name for p in (root / "current" / "assets").glob("atlas.*.js"))
+    out = publish.rebuild(conn, "2026-11-01", actor="тест", root=root)
+    assert (root / "current" / "index.html").is_file() and out["replaced"].startswith(".2026-11-01.replaced-")
+    core = next((root / "current" / "data").glob("core.*.json"))
+    data = __import__("json").loads(core.read_text(encoding="utf-8"))
+    assert data["computed"]["item_history"]["A2_intake"][-1]["version"] == "2026-11-01"
+    assert len(data["computed"]["new_materials"]) == report.classified
+    assert before  # старые ассеты были

@@ -11,6 +11,7 @@
   const fetchJSON = async name => { const r = await fetch(ASSET_ROOT + name); if (!r.ok) throw new Error(name + ': ' + r.status); return r.json(); };
   const D = await fetchJSON(HTML.dataset.core);
   const C = D.computed;
+  const NEW = new Set(C.new_materials || []);
   D.materials = [];
   const R = D.refs;
 
@@ -93,7 +94,10 @@
   }
   function sliceLine() {
     const v = D.version;
-    return `<div class="slice"><b>Срез на ${fmtDate(v.slice)}</b><span>${pl(totalMats(), 'материал', 'материала', 'материалов')} из ${pl(v.radar_range.issues, 'выпуска', 'выпусков', 'выпусков')} <a href="https://radar.agpm.space/" target="_blank" rel="noopener">AgPM Radar</a></span></div>`;
+    /* «С прошлой версии»: итог текущей версии одной строкой со ссылкой на «Что изменилось». */
+    const cur = D.versions.find(x => x.id === v.id), prev = v.prev && D.versions.find(x => x.id === v.prev);
+    const since = cur && prev && cur.changes ? `<span class="since">с ${fmtDate(prev.date)}: ${esc(cur.changes.summary || '')} · <a href="${link(['versions', v.id])}">что изменилось</a></span>` : '';
+    return `<div class="slice"><b>Срез на ${fmtDate(v.slice)}</b><span>${pl(totalMats(), 'материал', 'материала', 'материалов')} из ${pl(v.radar_range.issues, 'выпуска', 'выпусков', 'выпусков')} <a href="https://radar.agpm.space/" target="_blank" rel="noopener">AgPM Radar</a></span>${since}</div>`;
   }
   function treeHTML(active) {
     const a = active || {};
@@ -191,7 +195,11 @@
       ${l.basis && !l.counts && (l.grade === 'confirms' || l.grade === 'refutes') ? `<div class="mm">Не учитывается для сигнала: ${esc(l.basis)}.</div>` : ''}
     </div></div>`; };
     const cellmates = D.items.filter(i => i.key !== key && i.kind === it.kind && i.corridor === it.corridor && i.level === it.level);
-    const hist = (it.history || []).map(h => `<li><span class="d">${esc(fmtShort(h.version))}</span>${mark(h.signal, 14)}<span>${esc(sigName(h.signal) || 'без сигнала')} — ${esc(h.note)}</span></li>`).join('');
+    /* История по версиям: сигнал и число материалов в каждой; примечание — если сигнал в этой версии менялся. */
+    const byVersion = (C.item_history || {})[key];
+    const noteOf = vid => ((it.history || []).find(x => x.version === vid) || {}).note;
+    const hist = byVersion ? byVersion.map(h => `<li><span class="d">${esc(fmtShort(h.date))}</span>${mark(h.signal, 14)}<span>${esc(sigName(h.signal) || 'без сигнала')} · ${pl(h.materials, 'материал', 'материала', 'материалов')}${noteOf(h.version) ? ' — ' + esc(noteOf(h.version)) : ''}</span></li>`).join('')
+      : (it.history || []).map(h => `<li><span class="d">${esc(fmtShort(h.version))}</span>${mark(h.signal, 14)}<span>${esc(sigName(h.signal) || 'без сигнала')} — ${esc(h.note)}</span></li>`).join('');
     return `<button type="button" class="pp-close" aria-label="Закрыть паспорт" title="Закрыть (Esc)">${ICON.close}</button>
       <div class="pp-cell">${esc(whereLine(it))}</div>
       <h2 class="pp-title">${esc(it.title)}${it.status === 'new' ? '<span class="tag new">новый</span>' : ''}</h2>
@@ -231,6 +239,7 @@
     if (q.mon && m.month !== q.mon) return false;
     if (q.ev && m.evidence !== q.ev) return false;
     if (q.ty && m.type !== q.ty) return false;
+    if (q.new && !NEW.has(m.id)) return false;
     const ls = linksByMat[m.id] || [];
     if (q.item && !ls.some(l => l.item === q.item)) return false;
     if (q.cor) {
@@ -284,12 +293,13 @@
         <select name="ev" aria-label="Доказательность">${opt('', 'Любая доказательность', q.ev)}${R.evidence.map(e => opt(e, e, q.ev)).join('')}</select>
         <select name="ty" aria-label="Тип материала">${opt('', 'Все типы', q.ty)}${R.types.map(t => opt(t, t, q.ty)).join('')}</select>
         <select name="sort" aria-label="Порядок">${opt('num', 'По номеру', state.sort)}${opt('num-desc', 'Сначала новые номера', state.sort)}${opt('date', 'По дате публикации', state.sort)}</select>
+        ${NEW.size ? `<label class="chk"><input type="checkbox" name="new" value="1"${q.new ? ' checked' : ''}> только новые с прошлой версии · ${NEW.size}</label>` : ''}
         <a class="btn" href="${link(['index'])}">Сбросить</a><span class="count" id="count"></span>
       </form><div id="table"></div></div></div>`;
     const tbl = app.querySelector('#table'), cnt = app.querySelector('#count');
     const rerender = () => { tbl.innerHTML = tableHTML(list, state); cnt.textContent = `Показано: ${Math.min(list.length, state.page * 50)} из ${list.length}`; };
     rerender(); bindTable(tbl, list, state, rerender); bindDrawer();
-    app.querySelector('#filters').addEventListener('change', e => { const f = new FormData(e.currentTarget); const nq = { ...q }; ['cor', 'pr', 'mon', 'ev', 'ty', 'sort'].forEach(k => nq[k] = f.get(k) || ''); nav(link(['index'], nq), false); });
+    app.querySelector('#filters').addEventListener('change', e => { const f = new FormData(e.currentTarget); const nq = { ...q }; ['cor', 'pr', 'mon', 'ev', 'ty', 'sort', 'new'].forEach(k => nq[k] = f.get(k) || ''); nav(link(['index'], nq), false); });
     if (openNum) setTimeout(() => { const r = tbl.querySelector(`tr.row[data-k="${state.open}"]`); if (r) r.scrollIntoView({ block: 'center' }); }, 50);
   }
 
