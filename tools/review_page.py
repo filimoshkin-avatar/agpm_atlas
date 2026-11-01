@@ -108,7 +108,7 @@ def main(out: Path) -> None:
 <title>Проверка догрузки атласа</title><style>
 :root{{--bg:#f5f7fa;--card:#fff;--tx:#111827;--tx2:#4b5565;--line:rgba(17,24,39,.12);--accent:#1d5fcc;--ok:#15803d}}
 @media (prefers-color-scheme:dark){{:root{{--bg:#0b0d14;--card:#11141c;--tx:#eef0f5;--tx2:#a3a9b8;--line:rgba(238,240,245,.14);--accent:#5b9bff;--ok:#4cc38a}}}}
-*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}}
+*{{box-sizing:border-box}}body{{overflow-wrap:anywhere;margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}}
 main{{max-width:960px;margin:0 auto;padding:24px 16px 64px}}h1{{font-size:28px;margin:0 0 8px}}h2{{font-size:22px;margin:40px 0 12px}}h3{{font-size:18px;margin:4px 0}}
 a{{color:var(--accent)}}.sub{{color:var(--tx2);font-size:14px}}.kv{{font-size:15px;margin:6px 0}}
 nav{{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:8px 0;margin-bottom:8px;display:flex;gap:16px;flex-wrap:wrap}}
