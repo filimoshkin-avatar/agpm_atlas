@@ -65,6 +65,8 @@ def main(out: Path) -> None:
     for week, items in by_week.items():
         k = max(1, round(SAMPLE * len(items) / max(1, total))) if total > SAMPLE else len(items)
         sample |= {m["id"] for m in rng.sample(items, min(k, len(items)))}
+    if len(sample) > SAMPLE:  # округление по неделям может дать лишний материал
+        sample = set(rng.sample(sorted(sample), SAMPLE))
 
     def card(m) -> str:
         d = m["decision"] or {}
