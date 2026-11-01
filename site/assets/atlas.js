@@ -72,8 +72,9 @@
   const prCount = key => C.practices[key];
   const monthCounts = list => list ? R.months.map(mo => ({ key: mo.key, name: mo.name, n: list.filter(m => m.month === mo.key).length })) : C.months;
 
-  const conditions = () => C.conditions;
   const sheetText = key => { const s = C.sheet_texts[key]; return s && s.shown ? s.text : ''; };
+  /* Рамки и скобки листа показываются по тому же решению, что их тексты: условие правит редактор. */
+  const shown = key => !!(C.sheet_texts[key] && C.sheet_texts[key].shown);
 
   /* ---------- маршруты ---------- */
   function parseHash() {
@@ -128,7 +129,6 @@
 
   /* ---------- главная матрица ---------- */
   function sheetHTML(selected) {
-    const c = conditions();
     const cells = [];
     R.corridors.forEach(cor => cells.push(`<div class="corhead" style="grid-column:${['I', 'II', 'III', 'IV'].indexOf(cor.key) + 2};grid-row:1">${cor.key}</div>`));
     R.levels.forEach((l, ri) => {
@@ -145,9 +145,9 @@
       });
     });
     cells.push(`<div class="frame"></div>`);
-    if (c.corridor_iv_weakest) cells.push(`<div class="cor-frame" aria-hidden="true"></div>`);
-    if (c.levels_1_3_have_confirmed) cells.push(`<div class="bracket low" style="grid-column:1;grid-row:3/6"><span>${esc(sheetText('bracket-low'))}</span></div>`);
-    if (c.level_4_no_confirmed) cells.push(`<div class="bracket high" style="grid-column:1;grid-row:2/3"><span>${esc(sheetText('bracket-high'))}</span></div>`);
+    if (shown('corridor-iv')) cells.push(`<div class="cor-frame" aria-hidden="true"></div>`);
+    if (shown('bracket-low')) cells.push(`<div class="bracket low" style="grid-column:1;grid-row:3/6"><span>${esc(sheetText('bracket-low'))}</span></div>`);
+    if (shown('bracket-high')) cells.push(`<div class="bracket high" style="grid-column:1;grid-row:2/3"><span>${esc(sheetText('bracket-high'))}</span></div>`);
     cells.push(`<div class="axis-title">Самостоятельность агента, снизу вверх</div>`);
     R.corridors.forEach((cor, ci) => cells.push(`<div class="foot" style="grid-column:${ci + 2};grid-row:6"><b>${esc(cor.name)}</b><span class="sb">${esc(cor.sub)}</span><span class="ct">${pl(scenariosIn(cor.key).length, 'сценарий', 'сценария', 'сценариев')} · ${pl(corridorMats(cor.key), 'материал', 'материала', 'материалов')}</span></div>`));
     cells.push(`<div class="corax">Виды проектной деятельности, слева направо</div>`);

@@ -1,0 +1,6 @@
+{% extends "cabinet.html.j2" %}{% block title %}Прогоны{% endblock %}{% block heading %}Прогоны{% endblock %}
+{% block content %}<div class="panel"><table class="tbl runs"><tr><th>№</th><th>Начало — конец</th><th>Выпуски радара</th><th>Забрано</th><th>В атлас</th><th>Исключено</th><th>Перенесено</th><th>Обращений · токенов</th><th>Итог</th></tr>
+{% for r in rows %}{% set c = r.counters %}<tr><td class="sid">{{ r.id }}</td><td class="sid">{{ r.started_at.strftime('%d.%m %H:%M') }} — {{ r.finished_at.strftime('%H:%M') if r.finished_at else 'идёт' }}</td>
+<td class="sid">{{ r.cursor_from | ru_date }} — {{ r.cursor_to | ru_date }}</td><td class="sid">{{ c.fetched or 0 }}</td><td class="sid">{{ c.classified or 0 }}</td><td class="sid">{{ c.excluded or 0 }}</td><td class="sid">{{ c.deferred or 0 }}</td>
+<td class="sid">{{ r.model_calls }} · {{ '{:,}'.format(r.model_tokens).replace(',', ' ') }}</td><td class="{{ 'bad' if r.error else 'ok' }}">{{ r.error or ('без ошибок' if r.finished_at else '') }}</td></tr>{% endfor %}</table>
+<p class="note">Прогон идёт на управляющем сервере: там доступ к модели. Внеочередной запуск — <code>bash /data/atlas/scripts/weekly.sh ГГГГ-ММ-ДД</code> (см. «Инструкцию дежурного»); из кабинета его запуск появится, когда будет решено, как управляющий сервер узнаёт о запросе.</p></div>{% endblock %}

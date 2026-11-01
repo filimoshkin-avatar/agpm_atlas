@@ -16,7 +16,7 @@ from typing import Any
 
 import psycopg
 
-from atlas import language, numbers, rules, snapshot
+from atlas import language, numbers, rules, settings, snapshot
 from atlas.classify import PROMPT_VERSION, Context
 from atlas.importer import issue_number
 from atlas.model import Model, ModelError
@@ -27,8 +27,6 @@ ORIGIN = f"model:{PROMPT_VERSION}"
 OVERLAP_DAYS = 3
 RETRY_SOURCE_DAYS = 6
 MONTH_NAMES = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
-SIGNAL_CHANGE_LIMIT = 3
-OLD_LINKS_CHANGE_SHARE = 0.05
 
 
 @dataclass
@@ -360,7 +358,7 @@ def release(conn, *, version: str, title: str, note: str, slice_date: date, new_
     old_links = {(l["material"], l["item"], l["role"], l["grade"]) for l in prev_snap["links"]}
     kept = {(l["material"], l["item"], l["role"], l["grade"]) for l in data["links"]}
     changed_old = len(old_links - kept) / max(1, len(old_links))
-    if len(report.signal_changes) > SIGNAL_CHANGE_LIMIT or changed_old > OLD_LINKS_CHANGE_SHARE:
+    if len(report.signal_changes) > settings.get(conn, "sharp_signal_changes") or changed_old > settings.get(conn, "sharp_old_links_share"):
         report.held_reason = f"резкие изменения: смен сигнала {len(report.signal_changes)}, старых связей изменено {changed_old:.1%}"
     data["versions"].append({"id": version, "date": slice_date.isoformat(), "title": title, "materials": len(data["materials"]),
                              "items": len(data["items"]), "summary": changes["summary"], "state": "held", "demo": False,
@@ -396,7 +394,15 @@ def run_week(conn: psycopg.Connection, *, end: date, model: Model, sources: Sour
     pending = conn.execute(
         "SELECT * FROM radar_records WHERE state IN ('new', 'deferred') AND issue_date <= %s ORDER BY issue_date, position", (end,)
     ).fetchall()
+    limit = settings.get(conn, "model_call_limit")
     for record in pending:
+        if model.usage.calls >= limit:
+            # Предел расходов: разобранное публикуется, остальное — в следующий прогон.
+            left = len(pending) - (report.classified + report.excluded + report.deferred)
+            _queue(conn, "предел расходов на модель", str(run_id), f"достигнут предел {limit} обращений; перенесено материалов: {left}",
+                   version, run_id, report)
+            conn.commit()
+            break
         classify_record(conn, record, ctx=ctx, model=model, sources=sources, version=version, run_id=run_id, report=report, today=today)
         conn.commit()
 

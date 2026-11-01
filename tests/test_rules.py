@@ -91,3 +91,15 @@ def test_first_level_4_confirmation_takes_the_bracket_down(prototype_data):
     scenario["signal"] = "confirmed"
     shown = {t["key"]: t["shown"] for t in sheet_texts(prototype_data)}
     assert not shown["bracket-high"] and not shown["gap"]
+
+
+def test_built_conditions_match_named_ones(prototype_data):
+    import json
+    from atlas.rules import built_condition, describe_condition, sheet_texts
+    low = {"items": "scenario", "level": "1-3", "signal": "confirmed", "op": "exists"}
+    high = {"items": "scenario", "level": "4", "signal": "confirmed", "op": "none"}
+    assert built_condition(prototype_data, low) is True and built_condition(prototype_data, high) is True
+    assert built_condition(prototype_data, {"items": "neighbor", "level": "4", "signal": "confirmed", "op": "min", "n": 3}) is False
+    assert describe_condition(high) == "нет ни одного из сценариев матрицы (уровень 4, «Подтвердилось»)"
+    prototype_data["sheet_texts"][1]["condition"] = json.dumps(high)
+    assert next(t for t in sheet_texts(prototype_data) if t["key"] == "bracket-high")["shown"]

@@ -137,3 +137,34 @@ def test_scenario_signal_and_release_now(app):
     assert (a.site_root / "releases" / vid / "index.html").is_file()
     snap = conn.execute("SELECT snapshot FROM versions WHERE id = %s", (vid,)).fetchone()["snapshot"]
     assert next(i for i in snap["items"] if i["key"] == "B1_drafts")["signal"] == "confirmed"
+
+
+def test_sheet_refs_runs_settings(app):
+    import json
+    a, conn = app
+    cookie = _login(a)
+    o = "https://atlas.test"
+    page = req(a, "GET", "/editor/sheet", cookie=cookie).body.decode()
+    assert "bracket-high" in page and "показан" in page
+    r = req(a, "POST", "/editor/sheet", {"csrf": _csrf(conn), "key": "bracket-high", "mode": "built", "op": "none",
+            "items": "scenario", "level": "4", "signal": "confirmed", "text": "Пока заявления и сбои"}, cookie=cookie, origin=o)
+    assert "изменено 1" in dict(r.headers)["Location"]
+    cond = json.loads(conn.execute("SELECT condition FROM sheet_texts WHERE key = 'bracket-high'").fetchone()["condition"])
+    assert cond == {"items": "scenario", "level": "4", "corridor": "", "signal": "confirmed", "op": "none"}
+    assert "Практики контроля" in req(a, "GET", "/editor/refs", cookie=cookie).body.decode()
+    r = req(a, "POST", "/editor/refs", {"csrf": _csrf(conn), "kind": "practices", "key": "nadzor", "name": "Надзор людьми и журнал"}, cookie=cookie, origin=o)
+    assert "Сохранено полей: 1" in dict(r.headers)["Location"]
+    r = req(a, "POST", "/editor/refs", {"csrf": _csrf(conn), "kind": "sections", "action": "add", "key": "кириллица", "name": "x", "short": "x"}, cookie=cookie, origin=o)
+    assert "Не сохранено" in dict(r.headers)["Location"]
+    assert "Обращений" in req(a, "GET", "/editor/runs", cookie=cookie).body.decode()
+    # настройки — только администратору
+    assert req(a, "GET", "/editor/settings", cookie=cookie).status.startswith("403")
+    conn.execute("UPDATE editors SET role = 'admin'"); conn.commit()
+    r = req(a, "POST", "/editor/settings", {"csrf": _csrf(conn), "action": "setting", "key": "sharp_signal_changes", "value": "5"}, cookie=cookie, origin=o)
+    from atlas import settings
+    assert settings.get(conn, "sharp_signal_changes") == 5
+    r = req(a, "POST", "/editor/settings", {"csrf": _csrf(conn), "action": "add", "email": "new@agpm.space", "name": "Новый"}, cookie=cookie, origin=o)
+    body = r.body.decode()
+    assert r.status.startswith("200") and "Пароль для new@agpm.space" in body and "Location" not in dict(r.headers)
+    lines = __import__("atlas.editor", fromlist=["x"]).editorial_lines(conn)
+    assert any("вывод листа" in l for l in lines) and any("справочник" in l for l in lines)

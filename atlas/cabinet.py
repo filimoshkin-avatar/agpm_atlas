@@ -23,7 +23,10 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from datetime import date as _date
 
+import json
+
 from atlas import ROOT, db, editor, publish
+from atlas import settings as settings_mod
 
 PREFIX = "/editor"
 SESSION_HOURS = 12
@@ -138,6 +141,16 @@ class Cabinet:
                     return self.versions(conn, user, query)
                 if sub == "/release" and method == "POST":
                     return self.release_now(conn, user, form)
+                if sub == "/sheet":
+                    return self.sheet(conn, user, query) if method == "GET" else self.sheet_post(conn, user, form)
+                if sub == "/refs":
+                    return self.refs(conn, user, query) if method == "GET" else self.refs_post(conn, user, form)
+                if sub == "/runs" and method == "GET":
+                    return self.runs(conn, user, query)
+                if sub == "/settings":
+                    if user["role"] != "admin":
+                        return Response("Только для администратора", "403 Forbidden")
+                    return self.settings_page(conn, user, query) if method == "GET" else self.settings_post(conn, user, form)
             except (ValueError, LookupError) as exc:
                 conn.rollback()
                 back = environ.get("HTTP_REFERER") or f"{PREFIX}/feed"
@@ -205,7 +218,7 @@ class Cabinet:
             "queue": conn.execute("SELECT count(*) AS n FROM queue WHERE resolved_at IS NULL").fetchone()["n"],
             "materials": conn.execute("SELECT count(*) AS n FROM materials WHERE status = 'in_atlas'").fetchone()["n"],
             "scenarios": conn.execute("SELECT count(*) AS n FROM items").fetchone()["n"],
-            "pending": conn.execute("SELECT count(*) AS n FROM edits WHERE version IS NULL AND object IN ('material', 'link', 'item')").fetchone()["n"],
+            "pending": conn.execute("SELECT count(*) AS n FROM edits WHERE version IS NULL AND object = ANY(%s)", (list(editor.SITE_OBJECTS),)).fetchone()["n"],
         }
         return Response(_env.get_template(template).render(user=user, prefix=PREFIX, counts=counts, signals=SIGNALS, states=STATES, **ctx))
 
@@ -352,6 +365,111 @@ class Cabinet:
         conn.commit()
         url = publish.preview(conn, vid, self.site_root)
         return redirect(f"{PREFIX}/versions?m=Собрана версия {vid}: предпросмотр {url}, опубликовать — в ленте")
+
+    # ---------- тексты листа ----------
+
+    def sheet(self, conn, user, query) -> Response:
+        from atlas import rules, snapshot as snap_mod
+        texts = conn.execute("SELECT * FROM sheet_texts ORDER BY position").fetchall()
+        data = snap_mod.build(conn, {"id": "", "slice": "", "title": "", "prev": None, "radar_range": {}, "note": ""}, [])
+        shown = {t["key"]: t for t in rules.sheet_texts(data)}
+        named = {"levels_1_3_have_confirmed": "на уровнях 1–3 есть сценарий «Подтвердилось»",
+                 "level_4_no_confirmed": "на уровне 4 нет «Подтвердилось»",
+                 "neighbors_confirmed_on_4_and_matrix_not": "на уровне 4 есть подтверждённая соседняя территория и нет подтверждённого сценария",
+                 "corridor_iv_weakest": "в коридоре IV нет «Подтвердилось» и меньше всего материалов",
+                 "any_empty_cell": "есть пустая клетка"}
+        rows = []
+        for t in texts:
+            built = json.loads(t["condition"]) if t["condition"].lstrip().startswith("{") else None
+            rows.append({**t, "built": built, "label": rules.describe_condition(built) if built else named.get(t["condition"], t["condition"]),
+                         "shown": shown[t["key"]]["shown"], "rendered": shown[t["key"]]["rendered"]})
+        return self._page("sheet.html.j2", user, conn, rows=rows, named=named, ops=rules.BUILT_OPS,
+                          message=query.get("m", ""), active="sheet")
+
+    def sheet_post(self, conn, user, form: dict[str, str]) -> Response:
+        key = form["key"]
+        condition = None
+        if form.get("mode") == "named":
+            condition = form.get("named")
+        elif form.get("mode") == "built":
+            built = {"items": form.get("items", "scenario"), "level": form.get("level", ""), "corridor": form.get("corridor", ""),
+                     "signal": form.get("signal", ""), "op": form.get("op", "exists")}
+            if built["op"] == "min":
+                built["n"] = int(form.get("n") or 1)
+            condition = json.dumps(built, ensure_ascii=False)
+        changed = editor.edit_sheet_text(conn, key, actor=user["email"], reason=form.get("reason", ""),
+                                         text=form.get("text"), condition=condition)
+        conn.commit()
+        return redirect(f"{PREFIX}/sheet?m=Вывод «{key}»: изменено {len(changed)}; попадёт в следующую версию")
+
+    # ---------- справочники ----------
+
+    def refs(self, conn, user, query) -> Response:
+        data = {
+            "sections": conn.execute("""SELECT s.*, (SELECT count(*) FROM materials m WHERE m.section = s.key AND m.status = 'in_atlas') AS n
+                                        FROM ref_sections s ORDER BY position""").fetchall(),
+            "practices": conn.execute("""SELECT p.*, (SELECT count(*) FROM materials m WHERE m.practice = p.key AND m.status = 'in_atlas') AS n
+                                         FROM ref_practices p ORDER BY position""").fetchall(),
+            "types": conn.execute("""SELECT t.*, (SELECT count(*) FROM materials m WHERE m.type = t.name AND m.status = 'in_atlas') AS n
+                                     FROM ref_types t ORDER BY position""").fetchall(),
+            "roles": conn.execute("""SELECT r.*, (SELECT count(*) FROM links l WHERE l.role = r.name) AS n FROM ref_roles r ORDER BY position""").fetchall(),
+        }
+        return self._page("refs.html.j2", user, conn, message=query.get("m", ""), active="refs", **data)
+
+    def refs_post(self, conn, user, form: dict[str, str]) -> Response:
+        kind = form["kind"]
+        if form.get("action") == "add":
+            editor.add_ref(conn, kind, actor=user["email"], reason=form.get("reason", ""),
+                           **{k: form[k] for k in ("key", "name", "short", "definition") if k in form})
+            conn.commit()
+            return redirect(f"{PREFIX}/refs?m=Добавлено; попадёт в следующую версию")
+        fields = editor.REF_TABLES[kind][1]
+        changed = editor.edit_ref(conn, kind, form["key"], actor=user["email"], reason=form.get("reason", ""),
+                                  **{f: form[f].strip() for f in fields if f in form})
+        conn.commit()
+        return redirect(f"{PREFIX}/refs?m=Сохранено полей: {len(changed)}")
+
+    # ---------- прогоны ----------
+
+    def runs(self, conn, user, query) -> Response:
+        rows = conn.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 100").fetchall()
+        return self._page("runs.html.j2", user, conn, rows=rows, message=query.get("m", ""), active="runs")
+
+    # ---------- настройки и учётные записи ----------
+
+    def settings_page(self, conn, user, query, shown_password: str = "", shown_for: str = "") -> Response:
+        rows = conn.execute("SELECT * FROM settings ORDER BY key").fetchall()
+        editors = conn.execute("SELECT id, email, name, role, disabled, created_at FROM editors ORDER BY id").fetchall()
+        return self._page("settings.html.j2", user, conn, rows=rows, editors=editors, numeric=set(settings_mod.NUMERIC),
+                          message=query.get("m", ""), shown_password=shown_password, shown_for=shown_for, active="settings")
+
+    def settings_post(self, conn, user, form: dict[str, str]) -> Response:
+        action = form.get("action")
+        if action == "setting":
+            value = settings_mod.put(conn, form["key"], form["value"], user["email"])
+            conn.commit()
+            return redirect(f"{PREFIX}/settings?m=Настройка сохранена: {value}")
+        if action in ("add", "reset"):
+            password = secrets.token_urlsafe(12)
+            if action == "add":
+                add_editor(conn, form["email"], form["name"], form.get("role", "editor"), password)
+                who = form["email"].strip().lower()
+            else:
+                who = conn.execute("SELECT email FROM editors WHERE id = %s", (int(form["id"]),)).fetchone()["email"]
+                set_password(conn, who, password, user["email"])
+            # Пароль показывается прямо на странице один раз и не попадает в адрес и журналы.
+            return self.settings_page(conn, user, {"m": "Пароль показан один раз — передайте его редактору"}, password, who)
+        if action == "toggle":
+            target = int(form["id"])
+            if target == user["id"]:
+                raise ValueError("свою учётную запись отключить нельзя")
+            conn.execute("UPDATE editors SET disabled = NOT disabled WHERE id = %s", (target,))
+            conn.execute("DELETE FROM sessions WHERE editor_id = %s", (target,))
+            conn.execute("INSERT INTO edits (actor, object, object_id, field, reason) VALUES (%s, 'editor', %s, 'disabled', 'переключено')",
+                         (user["email"], str(target)))
+            conn.commit()
+            return redirect(f"{PREFIX}/settings?m=Учётная запись переключена")
+        raise LookupError("неизвестное действие")
 
     def do_publish(self, conn, user, version: str, form: dict[str, str]) -> Response:
         try:

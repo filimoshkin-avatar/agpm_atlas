@@ -1,0 +1,17 @@
+{% extends "cabinet.html.j2" %}{% block title %}Тексты листа{% endblock %}{% block heading %}Тексты листа{% endblock %}
+{% block content %}<p class="note">Выводы на главной матрице показываются, только пока выполнено их условие. Условие собирается из готовых частей; не выполнено — текст снимается с листа, а в очередь уходит задача написать новый.</p>
+{% for r in rows %}<div class="panel"><h3>{{ r.key }} · {{ r.place }} <span class="tag{{ ' ok' if r.shown }}">{{ 'показан' if r.shown else 'снят по условию' }}</span></h3>
+<form method="post" action="{{ prefix }}/sheet"><input type="hidden" name="csrf" value="{{ user.csrf }}"><input type="hidden" name="key" value="{{ r.key }}">
+<label class="field"><span>Текст на листе{% if '{' in r.text %} · подстановки {claimed4}, {refuted4} считаются из данных{% endif %}</span><textarea name="text">{{ r.text }}</textarea></label>
+{% if r.shown %}<p class="note">Сейчас на листе: {{ r.rendered }}</p>{% endif %}
+<p class="note">Условие сейчас: <b>{{ r.label }}</b></p>
+<div class="toolbar"><label><input type="radio" name="mode" value="keep" checked> не менять условие</label>
+<label><input type="radio" name="mode" value="named"> готовое:</label><select name="named" aria-label="Готовое условие">{% for k, v in named.items() %}<option value="{{ k }}"{{ ' selected' if r.condition == k }}>{{ v }}</option>{% endfor %}</select></div>
+<div class="toolbar"><label><input type="radio" name="mode" value="built"> собрать:</label>
+<select name="op" aria-label="Сравнение">{% for k, v in ops.items() %}<option value="{{ k }}"{{ ' selected' if r.built and r.built.op == k }}>{{ v }}</option>{% endfor %}</select>
+<input name="n" type="number" min="1" value="{{ r.built.n if r.built and r.built.n else 1 }}" style="width:72px" aria-label="Число">
+<select name="items" aria-label="Что"><option value="scenario">сценариев матрицы</option><option value="neighbor"{{ ' selected' if r.built and r.built['items'] == 'neighbor' }}>соседних территорий</option></select>
+<select name="level" aria-label="Уровень"><option value="">любой уровень</option>{% for lv in ['1', '2', '3', '4', '1-3'] %}<option value="{{ lv }}"{{ ' selected' if r.built and r.built.level == lv }}>уровень {{ lv | replace('-', '–') }}</option>{% endfor %}</select>
+<select name="corridor" aria-label="Коридор"><option value="">любой коридор</option>{% for c in ['I', 'II', 'III', 'IV'] %}<option{{ ' selected' if r.built and r.built.corridor == c }}>{{ c }}</option>{% endfor %}</select>
+<select name="signal" aria-label="Сигнал"><option value="">любой сигнал</option>{% for k, v in signals.items() if k %}<option value="{{ k }}"{{ ' selected' if r.built and r.built.signal == k }}>{{ v }}</option>{% endfor %}</select></div>
+<label class="field"><span>Причина правки</span><input name="reason"></label><button class="btn primary" type="submit">Сохранить</button></form></div>{% endfor %}{% endblock %}

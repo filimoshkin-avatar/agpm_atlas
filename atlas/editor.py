@@ -17,6 +17,8 @@ import psycopg
 from atlas import pipeline
 
 LINK_FIELDS = ("role", "grade", "counts", "basis")
+# Правки, которые меняют сайт и входят в версию («Уточнения редакции»).
+SITE_OBJECTS = ("material", "link", "item", "sheet", "ref")
 
 
 def edit_link(conn: psycopg.Connection, material_id: str, item_key: str, *, actor: str, reason: str,
@@ -48,7 +50,7 @@ def edit_link(conn: psycopg.Connection, material_id: str, item_key: str, *, acto
 def pending_edits(conn: psycopg.Connection) -> list[dict[str, Any]]:
     """Правки, ещё не вошедшие ни в одну версию."""
     return [dict(r) for r in conn.execute(
-        "SELECT * FROM edits WHERE version IS NULL AND object IN ('material', 'link', 'item') ORDER BY id")]
+        "SELECT * FROM edits WHERE version IS NULL AND object = ANY(%s) ORDER BY id", (list(SITE_OBJECTS),))]
 
 
 def release_edits(conn: psycopg.Connection, *, version: str, slice_date: date, title: str,
@@ -58,7 +60,7 @@ def release_edits(conn: psycopg.Connection, *, version: str, slice_date: date, t
     pipeline.recompute(conn, version, None, report, default_note="правка редактора")
     pipeline.release(conn, version=version, title=title, note=note,
                      slice_date=slice_date, new_issues=0, report=report, editorial=editorial)
-    conn.execute("UPDATE edits SET version = %s WHERE version IS NULL AND object IN ('material', 'link', 'item')", (version,))
+    conn.execute("UPDATE edits SET version = %s WHERE version IS NULL AND object = ANY(%s)", (version, list(SITE_OBJECTS)))
     return report
 
 
@@ -227,6 +229,12 @@ def editorial_lines(conn) -> list[str]:
             mid, key = e["object_id"].split(":", 1)
             label = f"№ {nums.get(mid) or mid} — «{items.get(key, key)}»"
             what = {"created": "новая связь", "removed": "связь снята"}.get(e["field"], _FIELD_NAMES.get(e["field"], e["field"]))
+        elif e["object"] == "sheet":
+            label = f"вывод листа «{e['object_id']}»"
+            what = {"text": "текст", "condition": "условие показа"}.get(e["field"], e["field"])
+        elif e["object"] == "ref":
+            label = f"справочник: {e['object_id']}"
+            what = "добавлен" if e["field"] == "created" else _FIELD_NAMES.get(e["field"], e["field"])
         elif e["object"] == "item":
             label = f"«{items.get(e['object_id'], e['object_id'])}»"
             what = "сигнал задан редактором" if e["field"] == "signal" else _FIELD_NAMES.get(e["field"], e["field"])
@@ -238,3 +246,70 @@ def editorial_lines(conn) -> list[str]:
         if e["reason"]:
             reasons[label] = e["reason"]
     return [f"{label}: {', '.join(whats)}" + (f" — {reasons[label]}" if label in reasons else "") for label, whats in out.items()]
+
+
+# ---------- тексты листа и справочники ----------
+
+REF_TABLES = {"sections": ("ref_sections", ("name", "short", "definition")),
+              "practices": ("ref_practices", ("name", "definition")),
+              "types": ("ref_types", ()),
+              "roles": ("ref_roles", ("basis",))}
+
+
+def edit_sheet_text(conn, key: str, *, actor: str, reason: str = "", text: str | None = None, condition: str | None = None) -> list[str]:
+    row = conn.execute("SELECT * FROM sheet_texts WHERE key = %s", (key,)).fetchone()
+    if row is None:
+        raise LookupError(f"вывода {key} нет")
+    if condition is not None and condition.lstrip().startswith("{"):
+        from atlas.rules import BUILT_OPS
+        cond = json.loads(condition)
+        if cond.get("items") not in ("scenario", "neighbor") or cond.get("op") not in BUILT_OPS:
+            raise ValueError("условие собрано не из допустимых частей")
+    changed = []
+    for field, value in (("text", text), ("condition", condition)):
+        if value is None or row[field] == value:
+            continue
+        _journal(conn, actor, "sheet", key, field, row[field], value, reason)
+        conn.execute(f"UPDATE sheet_texts SET {field} = %s WHERE key = %s", (value, key))  # noqa: S608
+        changed.append(field)
+    return changed
+
+
+def edit_ref(conn, kind: str, key: str, *, actor: str, reason: str = "", **changes: Any) -> list[str]:
+    """Переименование записи справочника; ключ не меняется никогда."""
+    table, fields = REF_TABLES[kind]
+    unknown = set(changes) - set(fields)
+    if unknown:
+        raise ValueError(f"у справочника {kind} меняются только {fields}")
+    col = "name" if kind in ("types", "roles") else "key"
+    row = conn.execute(f"SELECT * FROM {table} WHERE {col} = %s", (key,)).fetchone()  # noqa: S608
+    if row is None:
+        raise LookupError(f"записи {key} нет")
+    changed = []
+    for field, value in changes.items():
+        if row[field] == value:
+            continue
+        _journal(conn, actor, "ref", f"{kind}:{key}", field, row[field], value, reason)
+        conn.execute(f"UPDATE {table} SET {field} = %s WHERE {col} = %s", (value, key))  # noqa: S608
+        changed.append(field)
+    return changed
+
+
+def add_ref(conn, kind: str, *, actor: str, reason: str = "", **values: Any) -> None:
+    """Новая запись справочника: раздел, практика или тип. Роли меняют правило сигнала — только через «Правила атласа»."""
+    if kind == "roles":
+        raise ValueError("роли задают правило сигнала; новая роль — через «Правила атласа» и выкладку кода")
+    table, fields = REF_TABLES[kind]
+    position = conn.execute(f"SELECT coalesce(max(position), -1) + 1 AS p FROM {table}").fetchone()["p"]  # noqa: S608
+    if kind == "types":
+        name = values["name"].strip()
+        conn.execute("INSERT INTO ref_types (name, position) VALUES (%s, %s)", (name, position))
+        key = name
+    else:
+        key = values["key"].strip()
+        if not key or not key.replace("-", "").replace("_", "").isalnum() or not key.isascii():
+            raise ValueError("ключ — латиница, цифры, дефис; он становится частью адреса и не меняется")
+        cols = ["key", *fields, "position"]
+        conn.execute(f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))})",  # noqa: S608
+                     (key, *[values.get(f, "").strip() for f in fields], position))
+    _journal(conn, actor, "ref", f"{kind}:{key}", "created", None, values, reason)

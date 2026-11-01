@@ -177,12 +177,53 @@ def conditions(data: Json) -> dict[str, Any]:
     }
 
 
+# Условие, собранное редактором из готовых частей:
+# {"items": "scenario"|"neighbor", "level": ""|"1"…"4"|"1-3", "corridor": ""|"I"…"IV",
+#  "signal": ""|"confirmed"|"claimed"|"refuted", "op": "exists"|"none"|"min", "n": 1}
+BUILT_OPS = {"exists": "есть хотя бы один", "none": "нет ни одного", "min": "не меньше"}
+
+
+def built_condition(data: Json, cond: Mapping[str, Any]) -> bool:
+    levels = {"": {1, 2, 3, 4}, "1-3": {1, 2, 3}}.get(str(cond.get("level", "")), None)
+    if levels is None:
+        levels = {int(cond["level"])}
+    matched = [
+        i for i in data["items"]
+        if i["kind"] == cond.get("items", "scenario")
+        and i["level"] in levels
+        and (not cond.get("corridor") or i["corridor"] == cond["corridor"])
+        and (not cond.get("signal") or i["signal"] == cond["signal"])
+    ]
+    op = cond.get("op", "exists")
+    if op == "none":
+        return not matched
+    if op == "min":
+        return len(matched) >= int(cond.get("n", 1))
+    return bool(matched)
+
+
+def describe_condition(cond: Mapping[str, Any]) -> str:
+    what = {"scenario": "сценариев матрицы", "neighbor": "соседних территорий"}[cond.get("items", "scenario")]
+    parts = [f"уровень {cond['level'].replace('-', '–')}" if cond.get("level") else "",
+             f"коридор {cond['corridor']}" if cond.get("corridor") else "",
+             {"confirmed": "«Подтвердилось»", "claimed": "«Заявлено»", "refuted": "«Не подтвердилось»"}.get(cond.get("signal", ""), "")]
+    op = BUILT_OPS[cond.get("op", "exists")] + (f" {cond.get('n', 1)}" if cond.get("op") == "min" else "")
+    return f"{op} из {what}" + (f" ({', '.join(p for p in parts if p)})" if any(parts) else "")
+
+
+def evaluate_condition(data: Json, condition: str, flags: Mapping[str, Any] | None = None) -> bool:
+    if condition.lstrip().startswith("{"):
+        import json
+        return built_condition(data, json.loads(condition))
+    return bool((flags if flags is not None else conditions(data)).get(condition))
+
+
 def sheet_texts(data: Json) -> list[dict[str, Any]]:
     """Тексты листа с решением «показан» и готовым текстом после подстановок."""
     flags = conditions(data)
     out = []
     for text in data["sheet_texts"]:
-        shown = bool(flags.get(text["condition"]))
+        shown = evaluate_condition(data, text["condition"], flags)
         rendered = text["text"].replace("{claimed4}", flags["claimed4"]).replace("{refuted4}", flags["refuted4"])
         out.append({**text, "shown": shown, "rendered": rendered if shown else ""})
     return out
