@@ -43,12 +43,23 @@ def atoms(text: str) -> list[str]:
     return out
 
 
+_EN_WORDS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16,
+    "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+    "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90, "hundred": 100, "dozen": 12,
+    "half": 2, "double": 2, "twice": 2, "triple": 3, "thrice": 3,
+}
+_EN = re.compile(r"\b(" + "|".join(_EN_WORDS) + r")\b", re.IGNORECASE)
+
+
 def haystack(*texts: str) -> set[str]:
+    """Числа источника: записанные цифрами и английскими числительными («six» — 6)."""
     values: set[str] = set()
     for text in texts:
         for token in atoms(text or ""):
             values |= _variants(token)
-            # «35–60» в источнике — тоже 35 и 60
+        values |= {str(_EN_WORDS[m.group(1).lower()]) for m in _EN.finditer(text or "")}
     return values
 
 

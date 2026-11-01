@@ -31,3 +31,9 @@ def test_forbidden_words_and_turns():
     assert any("это не X, а Y" in f for f in found)
     assert sum("начинается" in f for f in found) == 3
     assert violations("Агент готовит черновик, человек утверждает.") == []
+
+
+def test_english_number_words_count_as_numbers():
+    assert missing("в ближайшие 6–12 месяцев", "over the next six to 12 months") == []
+    assert missing("6 сессий трека", "The track features six sessions") == []
+    assert missing("7 сессий", "six sessions") == ["7"]
