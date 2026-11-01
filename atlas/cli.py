@@ -164,6 +164,17 @@ def cmd_add_editor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_set_password(args: argparse.Namespace) -> int:
+    password = sys.stdin.readline().rstrip("\n")
+    if len(password) < 8:
+        print(json.dumps({"error": "пароль короче 8 знаков"}, ensure_ascii=False))
+        return 1
+    with db.connect() as conn:
+        cabinet.set_password(conn, args.email, password, args.actor)
+    print(json.dumps({"email": args.email.lower(), "password_changed": True, "sessions_closed": True}, ensure_ascii=False))
+    return 0
+
+
 def cmd_cabinet(args: argparse.Namespace) -> int:
     cabinet.serve(args.host, args.port)
     return 0
@@ -237,6 +248,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--name", required=True)
     p.add_argument("--role", choices=["editor", "admin"], default="editor")
     p.set_defaults(func=cmd_add_editor)
+    p = sub.add_parser("set-password", help="сменить пароль кабинета; новый пароль — одной строкой из стандартного ввода")
+    p.add_argument("--email", required=True)
+    p.add_argument("--actor", default="администратор")
+    p.set_defaults(func=cmd_set_password)
     p = sub.add_parser("cabinet", help="запустить кабинет (за Caddy)")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8790)

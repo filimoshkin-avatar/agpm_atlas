@@ -86,3 +86,12 @@ def test_assets_are_served_but_not_outside_folder(app):
     a, _ = app
     assert req(a, "GET", "/editor/assets/atlas.css").status.startswith("200")
     assert req(a, "GET", "/editor/assets/../../atlas/db.py").status.startswith("404")
+
+
+def test_password_change_closes_sessions(app):
+    a, conn = app
+    cookie = _login(a)
+    cabinet.set_password(conn, "ed@agpm.space", "новый-пароль", "тест")
+    assert req(a, "GET", "/editor/feed", cookie=cookie).status.startswith("303")
+    r = req(a, "POST", "/editor/login", {"email": "ed@agpm.space", "password": "новый-пароль"}, origin="https://atlas.test")
+    assert r.status.startswith("303") and "Set-Cookie" in dict(r.headers)

@@ -47,6 +47,18 @@ def add_editor(conn, email: str, name: str, role: str, password: str) -> int:
     return row["id"]
 
 
+def set_password(conn, email: str, password: str, actor: str) -> None:
+    """Новый пароль (хеш argon2); открытые сеансы учётной записи закрываются."""
+    row = conn.execute("UPDATE editors SET password_hash = %s WHERE email = %s RETURNING id",
+                       (hash_password(password), email.strip().lower())).fetchone()
+    if row is None:
+        raise LookupError(f"учётной записи {email} нет")
+    conn.execute("DELETE FROM sessions WHERE editor_id = %s", (row["id"],))
+    conn.execute("INSERT INTO edits (actor, object, object_id, field, reason) VALUES (%s, 'editor', %s, 'password', 'смена пароля')",
+                 (actor, email.strip().lower()))
+    conn.commit()
+
+
 class Response:
     def __init__(self, body: str | bytes = "", status: str = "200 OK", headers: list[tuple[str, str]] | None = None) -> None:
         self.body = body.encode("utf-8") if isinstance(body, str) else body
