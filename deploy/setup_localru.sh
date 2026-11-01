@@ -21,7 +21,7 @@ SELECT 'CREATE ROLE atlas LOGIN' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE ro
 SELECT 'CREATE DATABASE atlas OWNER atlas' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'atlas')\gexec
 SQL
 if [ ! -f /etc/atlas/db.pass ]; then
-  umask 077; openssl rand -base64 24 | tr -d '\n' > /etc/atlas/db.pass
+  (umask 077; openssl rand -base64 24 | tr -d "\n" > /etc/atlas/db.pass)
   sudo -u postgres psql -v ON_ERROR_STOP=1 -c "ALTER ROLE atlas PASSWORD '$(cat /etc/atlas/db.pass)'"
 fi
 
