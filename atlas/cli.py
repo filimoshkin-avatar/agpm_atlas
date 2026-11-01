@@ -9,7 +9,7 @@ from pathlib import Path
 
 from datetime import date
 
-from atlas import PROTOTYPE, REFERENCE_JSON, ROOT, db, editor, importer, pipeline, reconcile, site, snapshot
+from atlas import PROTOTYPE, REFERENCE_JSON, ROOT, db, editor, importer, pipeline, publish, reconcile, site, snapshot
 from atlas.model import Model
 
 
@@ -115,6 +115,28 @@ def cmd_release_edits(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_publish(args: argparse.Namespace) -> int:
+    with db.connect() as conn:
+        version = args.version or conn.execute(
+            "SELECT id FROM versions WHERE state = 'held' ORDER BY slice DESC, id DESC LIMIT 1").fetchone()["id"]
+        try:
+            rep = publish.publish(conn, version, actor=args.actor, force_sharp=args.force_sharp,
+                                  root=args.root or publish.SITE_ROOT)
+        except publish.PublishBlocked as exc:
+            print(json.dumps({"version": version, "published": False, "failures": exc.failures}, ensure_ascii=False))
+            return 1
+    print(json.dumps({"version": version, "published": True, "built": rep.built,
+                      "checks": {c.id: c.detail for c in rep.checks}}, ensure_ascii=False))
+    return 0
+
+
+def cmd_rollback(args: argparse.Namespace) -> int:
+    with db.connect() as conn:
+        out = publish.rollback(conn, args.version, actor=args.actor, reason=args.reason, root=args.root or publish.SITE_ROOT)
+    print(json.dumps(out, ensure_ascii=False))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="atlas")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -147,6 +169,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--title", required=True)
     p.add_argument("--editorial", action="append", default=[], help="строка «Уточнения редакции»")
     p.set_defaults(func=cmd_release_edits)
+    p = sub.add_parser("publish", help="проверить, собрать и сделать версию текущей")
+    p.add_argument("--version", help="по умолчанию — последняя задержанная")
+    p.add_argument("--force-sharp", action="store_true", help="кнопка «Опубликовать» при резких изменениях")
+    p.add_argument("--actor", default="автоматика")
+    p.add_argument("--root", type=Path)
+    p.set_defaults(func=cmd_publish)
+    p = sub.add_parser("rollback", help="вернуть сайт и данные к опубликованной версии")
+    p.add_argument("--version", required=True)
+    p.add_argument("--reason", required=True)
+    p.add_argument("--actor", default="дежурный")
+    p.add_argument("--root", type=Path)
+    p.set_defaults(func=cmd_rollback)
     args = parser.parse_args(argv)
     return args.func(args)
 

@@ -1,0 +1,244 @@
+"""Публикация и откат версии (задание, «Пересборка и автоматическая публикация»).
+
+Сайт версии собирается в `releases/<версия>/`, проверяется там же и становится
+текущим одним атомарным переключением указателя `current`: читатель никогда не
+видит недособранную версию. Провал блокирующей проверки оставляет на сайте
+прежнюю версию. Версия, задержанная предохранителем «резкие изменения»,
+выходит только по кнопке «Опубликовать» (`force_sharp=True`).
+
+Откат возвращает сайт на прежнюю версию и данные базы — к её снимку:
+материалы, добавленные после неё, исключаются с причиной (номера не
+переиспользуются, записи радара остаются связанными и не вернутся), связи и
+сигналы возвращаются к снимку. Следующий прогон строится от возвращённой
+версии и не повторяет отменённого.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import psycopg
+
+from atlas import PROTOTYPE, rules, site, snapshot
+
+SITE_ROOT = Path(os.environ.get("ATLAS_SITE_ROOT", "/srv/atlas.agpm.space"))
+PAGE_BUDGET = 300 * 1024  # главная без шрифтов
+
+
+class PublishBlocked(RuntimeError):
+    def __init__(self, failures: list[str]) -> None:
+        super().__init__("; ".join(failures))
+        self.failures = failures
+
+
+@dataclass
+class Check:
+    id: str
+    ok: bool
+    detail: str = ""
+
+
+@dataclass
+class PublishReport:
+    version: str
+    checks: list[Check] = field(default_factory=list)
+    built: list[str] = field(default_factory=list)
+
+
+def _versions_overlay(conn) -> list[dict[str, Any]]:
+    """Список версий для страниц архива — из базы, с текущими состояниями."""
+    from atlas.pipeline import _versions_list
+    return _versions_list(conn)
+
+
+def _reference_rule() -> Check:
+    raw = (PROTOTYPE / "data" / "atlas-2026-10-09.js").read_text(encoding="utf-8")
+    data = json.loads(raw[len("window.ATLAS_DATA = "):].rstrip().rstrip(";"))
+    got = rules.signals(data)
+    bad = [i["key"] for i in data["items"] if i["kind"] != "loss" and got[i["key"]].value != i["signal"]]
+    return Check("signal_rule", not bad, f"26 из 26" if not bad else f"расходятся: {bad}")
+
+
+def checks(conn, snap: dict[str, Any], prev: dict[str, Any] | None, version_row: dict[str, Any], *, force_sharp: bool) -> list[Check]:
+    out: list[Check] = []
+    mats = snap["materials"]
+    ids = {m["id"] for m in mats}
+    items = {i["key"] for i in snap["items"]}
+    dangling = [l for l in snap["links"] if l["material"] not in ids or l["item"] not in items]
+    no_section = [m["num"] for m in mats if not m["section"]]
+    out.append(Check("integrity", not dangling and not no_section,
+                     f"связей в никуда {len(dangling)}, без раздела {len(no_section)}"))
+    nums = [m["num"] for m in mats]
+    renumbered = []
+    if prev:
+        old = {m["id"]: m["num"] for m in prev["materials"]}
+        renumbered = [mid for mid, num in old.items() if mid in ids and next(m["num"] for m in mats if m["id"] == mid) != num]
+    out.append(Check("numbers", len(nums) == len(set(nums)) and not renumbered,
+                     f"повторов {len(nums) - len(set(nums))}, сменили номер {len(renumbered)}"))
+    if prev:
+        lost = {m["id"] for m in prev["materials"]} - ids
+        excluded_by_editor = {r["id"] for r in conn.execute(
+            "SELECT id FROM materials WHERE id = ANY(%s) AND status = 'excluded' AND origin <> 'manual-2026-10-09'", (list(lost),))} if lost else set()
+        editor_ids = {r["object_id"].split(":")[0] for r in conn.execute("SELECT object_id FROM edits WHERE object = 'material' AND field = 'status'")}
+        unexplained = lost - (excluded_by_editor & editor_ids)
+        out.append(Check("losses", not unexplained, f"пропали без исключения редактором: {len(unexplained)}"))
+    from atlas import numbers as num_check
+    missing = []
+    for m in mats:
+        if m["origin"].startswith("model:"):
+            src = conn.execute("SELECT s.text FROM source_texts s WHERE s.url_norm = %s AND s.status = 'ok'", (m["url_norm"],)).fetchone()
+            card = conn.execute("SELECT payload FROM radar_records WHERE material_id = %s ORDER BY issue_date LIMIT 1", (m["id"],)).fetchone()
+            hay = [src["text"] if src else "", json.dumps(card["payload"], ensure_ascii=False) if card else ""]
+            for text in [m["summary"], *m["numbers"], m["takeaway"]]:
+                if num_check.missing(text, *hay):
+                    missing.append(m["num"])
+                    break
+    out.append(Check("figures", not missing, f"числа без источника у № {missing[:10]}" if missing else "все числа найдены"))
+    out.append(_reference_rule())
+    sharp = next((c for c in (version_row.get("checks") or []) if c.get("id") == "sharp_changes"), {})
+    out.append(Check("sharp_changes", not sharp.get("held") or force_sharp,
+                     (sharp.get("detail") or "в пределах") + (" — опубликовано кнопкой" if sharp.get("held") and force_sharp else "")))
+    return out
+
+
+def site_checks(out_dir: Path, manifest: dict[str, Any]) -> list[Check]:
+    """Собранная папка: все страницы на месте, внутренние ссылки ведут внутрь, бюджет главной."""
+    pages = [p for p in manifest["files"] if p.endswith("index.html")]
+    broken = []
+    for page in pages:
+        html = (out_dir / page).read_text(encoding="utf-8")
+        for ref in re.findall(r'(?:href|src)="(\.\./|\./)([^"#?]*)"', html):
+            target = (out_dir / page).parent / (ref[0] + ref[1])
+            if not (target.is_file() or (target / "index.html").is_file()):
+                broken.append(f"{page} → {ref[0] + ref[1]}")
+    home = (out_dir / "index.html").stat().st_size
+    core = next(p for p in manifest["files"] if p.startswith("data/core."))
+    js = next(p for p in manifest["files"] if p.startswith("assets/atlas.") and p.endswith(".js"))
+    css = next(p for p in manifest["files"] if p.startswith("assets/atlas.") and p.endswith(".css"))
+    weight = home + sum((out_dir / p).stat().st_size for p in (core, js, css))
+    return [
+        Check("site_links", not broken, f"битых ссылок {len(broken)}: {broken[:3]}" if broken else f"страниц {len(pages)}"),
+        Check("site_budget", weight <= PAGE_BUDGET, f"главная без шрифтов {weight // 1024} КБ"),
+    ]
+
+
+def _build(conn, version: str, root: Path) -> tuple[Path, dict[str, Any]]:
+    row = conn.execute("SELECT snapshot, snapshot_sha256 FROM versions WHERE id = %s", (version,)).fetchone()
+    if snapshot.sha256(row["snapshot"]) != row["snapshot_sha256"]:
+        raise PublishBlocked([f"снимок {version} не совпадает со своим sha256"])
+    out = root / "releases" / version
+    if out.exists():
+        manifest = json.loads((out / "MANIFEST.json").read_text(encoding="utf-8"))
+        return out, manifest
+    tmp = root / "releases" / f".{version}.building"
+    if tmp.exists():
+        import shutil
+        shutil.rmtree(tmp)
+    snap = dict(row["snapshot"])
+    snap["versions"] = _versions_overlay(conn)
+    manifest = site.build(snap, tmp)
+    tmp.rename(out)
+    return out, manifest
+
+
+def switch_current(root: Path, version: str) -> None:
+    """Атомарно: новый символьный указатель рядом и rename поверх старого."""
+    link = root / "current"
+    tmp = root / ".current.new"
+    if tmp.is_symlink() or tmp.exists():
+        tmp.unlink()
+    tmp.symlink_to(Path("releases") / version)
+    os.replace(tmp, link)
+
+
+def publish(conn: psycopg.Connection, version: str, *, actor: str, root: Path = SITE_ROOT, force_sharp: bool = False) -> PublishReport:
+    row = conn.execute("SELECT * FROM versions WHERE id = %s", (version,)).fetchone()
+    if row is None:
+        raise LookupError(f"версии {version} нет")
+    if row["state"] not in ("held", "current", "published"):
+        raise PublishBlocked([f"версия {version} в состоянии {row['state']}"])
+    current = conn.execute("SELECT id, snapshot FROM versions WHERE state = 'current'").fetchone()
+    report = PublishReport(version)
+    report.checks = checks(conn, row["snapshot"], current["snapshot"] if current and current["id"] != version else None, row, force_sharp=force_sharp)
+    failures = [f"{c.id}: {c.detail}" for c in report.checks if not c.ok]
+    if failures:
+        _journal(conn, actor, version, "publish_blocked", failures)
+        raise PublishBlocked(failures)
+
+    # Задержанные версии до этой выходят в архив вместе с ней: их снимки уже есть.
+    earlier = [r["id"] for r in conn.execute(
+        "SELECT id FROM versions WHERE state = 'held' AND (slice, id) < (%s, %s) ORDER BY slice, id", (row["slice"], version))]
+    for vid in earlier:
+        conn.execute("UPDATE versions SET state = 'published' WHERE id = %s", (vid,))
+    conn.execute("UPDATE versions SET state = 'published' WHERE state = 'current'")
+    conn.execute("UPDATE versions SET state = 'current' WHERE id = %s", (version,))
+    for vid in [*earlier, version]:
+        out, manifest = _build(conn, vid, root)
+        report.built.append(vid)
+        if vid == version:
+            for c in site_checks(out, manifest):
+                report.checks.append(c)
+                if not c.ok:
+                    conn.rollback()
+                    _journal(conn, actor, version, "publish_blocked", [f"{c.id}: {c.detail}"])
+                    raise PublishBlocked([f"{c.id}: {c.detail}"])
+    conn.execute("UPDATE versions SET checks = checks || %s::jsonb WHERE id = %s",
+                 (json.dumps([c.__dict__ for c in report.checks], ensure_ascii=False), version))
+    _journal(conn, actor, version, "publish", [c.id for c in report.checks])
+    conn.commit()
+    switch_current(root, version)
+    return report
+
+
+def _journal(conn, actor: str, version: str, field_name: str, value: Any, reason: str = "") -> None:
+    conn.execute(
+        "INSERT INTO edits (actor, object, object_id, field, after, reason, version) VALUES (%s, 'version', %s, %s, %s, %s, %s)",
+        (actor, version, field_name, json.dumps(value, ensure_ascii=False), reason, version),
+    )
+    conn.commit()
+
+
+def rollback(conn: psycopg.Connection, version: str, *, actor: str, reason: str, root: Path = SITE_ROOT) -> dict[str, Any]:
+    """Сайт и данные возвращаются к версии `version`; отменённые версии помечаются."""
+    if not reason.strip():
+        raise ValueError("у отката нужна причина")
+    target = conn.execute("SELECT * FROM versions WHERE id = %s", (version,)).fetchone()
+    if target is None or target["state"] not in ("published", "current"):
+        raise PublishBlocked([f"откатывать можно только на опубликованную версию, а {version} — {target and target['state']}"])
+    snap = target["snapshot"]
+    keep_mats = {m["id"] for m in snap["materials"]}
+    reverted = [r["id"] for r in conn.execute(
+        "SELECT id FROM versions WHERE (slice, id) > (%s, %s) AND state IN ('current', 'published', 'held')", (target["slice"], version))]
+    note = f"отменено откатом на версию {version}"
+    dropped = conn.execute(
+        """UPDATE materials SET status = 'excluded', num = NULL, status_reason = %s, updated_at = now()
+           WHERE status = 'in_atlas' AND NOT (id = ANY(%s)) RETURNING id""", (note, list(keep_mats))).fetchall()
+    snap_links = {(l["material"], l["item"]): l for l in snap["links"]}
+    for r in conn.execute("SELECT material_id, item_key FROM links").fetchall():
+        if (r["material_id"], r["item_key"]) not in snap_links:
+            conn.execute("DELETE FROM links WHERE material_id = %s AND item_key = %s", (r["material_id"], r["item_key"]))
+    for (mid, key), l in snap_links.items():
+        conn.execute(
+            """INSERT INTO links (material_id, item_key, role, grade, counts, basis, origin, position)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, 0)
+               ON CONFLICT (material_id, item_key) DO UPDATE SET role = excluded.role, grade = excluded.grade,
+                 counts = excluded.counts, basis = excluded.basis""",
+            (mid, key, l["role"], l["grade"], l["counts"], l["basis"], l["origin"]))
+    for item in snap["items"]:
+        conn.execute("UPDATE items SET signal = %s, signal_origin = %s WHERE key = %s",
+                     (item["signal"], item["signal_origin"], item["key"]))
+    for vid in reverted:
+        conn.execute("UPDATE versions SET state = 'rolled_back' WHERE id = %s", (vid,))
+    conn.execute("UPDATE versions SET state = 'current' WHERE id = %s", (version,))
+    conn.execute(
+        "INSERT INTO edits (actor, object, object_id, field, before, after, reason, version) VALUES (%s, 'version', %s, 'rollback', %s, %s, %s, %s)",
+        (actor, version, json.dumps(reverted), json.dumps({"dropped_materials": len(dropped)}), reason, version))
+    conn.commit()
+    _build(conn, version, root)
+    switch_current(root, version)
+    return {"version": version, "reverted": reverted, "dropped_materials": len(dropped)}
