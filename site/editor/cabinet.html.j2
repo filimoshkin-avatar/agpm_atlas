@@ -5,6 +5,6 @@
 <a href="{{ prefix }}/feed" class="{{ 'on' if active == 'feed' }}">Лента изменений<em>{{ counts.versions }}</em></a>
 <a href="{{ prefix }}/queue" class="{{ 'on' if active == 'queue' }}">Очередь на внимание<em>{{ counts.queue }}</em></a>
 <a href="{{ prefix }}/material" class="{{ 'on' if active == 'material' }}">Материалы<em>{{ counts.materials }}</em></a>
-<a href="{{ prefix }}/scenario" class="{{ 'on' if active == 'scenario' }}">Сценарии<em>{{ counts.items }}</em></a>
+<a href="{{ prefix }}/scenario" class="{{ 'on' if active == 'scenario' }}">Сценарии<em>{{ counts.scenarios }}</em></a>
 <a href="{{ prefix }}/versions" class="{{ 'on' if active == 'versions' }}">Версии{% if counts.pending %}<em>правок {{ counts.pending }}</em>{% else %}<em>{{ counts.versions }}</em>{% endif %}</a>
 <a href="/" target="_blank" rel="noopener">Открыть сайт</a></aside><div>{% if message %}<div class="panel" role="status"><b>{{ message }}</b></div>{% endif %}{% block content %}{% endblock %}</div></div>{% endblock %}

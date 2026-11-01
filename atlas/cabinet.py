@@ -204,8 +204,8 @@ class Cabinet:
             "versions": conn.execute("SELECT count(*) AS n FROM versions").fetchone()["n"],
             "queue": conn.execute("SELECT count(*) AS n FROM queue WHERE resolved_at IS NULL").fetchone()["n"],
             "materials": conn.execute("SELECT count(*) AS n FROM materials WHERE status = 'in_atlas'").fetchone()["n"],
-            "items": conn.execute("SELECT count(*) AS n FROM items").fetchone()["n"],
-            "pending": conn.execute("SELECT count(*) AS n FROM edits WHERE version IS NULL AND object <> 'version'").fetchone()["n"],
+            "scenarios": conn.execute("SELECT count(*) AS n FROM items").fetchone()["n"],
+            "pending": conn.execute("SELECT count(*) AS n FROM edits WHERE version IS NULL AND object IN ('material', 'link', 'item')").fetchone()["n"],
         }
         return Response(_env.get_template(template).render(user=user, prefix=PREFIX, counts=counts, signals=SIGNALS, states=STATES, **ctx))
 

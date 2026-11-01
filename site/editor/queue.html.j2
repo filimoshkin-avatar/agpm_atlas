@@ -1,5 +1,5 @@
 {% extends "cabinet.html.j2" %}{% block title %}Очередь{% endblock %}{% block heading %}Очередь на внимание{% endblock %}
 {% block content %}{% for kind, rows in groups.items() %}<div class="panel"><h3>{{ kind }} <span class="tag">{{ rows | length }}</span></h3><ul class="feed">
-{% for q in rows %}<li><div><div class="what">{{ q.text }}</div><div class="why">{{ q.object_id }}{% if q.version %} · версия {{ q.version }}{% endif %}</div></div>
+{% for q in rows %}<li><span class="mk"></span><div><div class="what">{{ q.text }}</div><div class="why">{{ q.object_id }}{% if q.version %} · версия {{ q.version }}{% endif %}</div></div>
 <div class="acts"><form method="post" action="{{ prefix }}/queue/{{ q.id }}/resolve"><input type="hidden" name="csrf" value="{{ user.csrf }}"><button class="btn" type="submit">Решено</button></form></div></li>{% endfor %}</ul></div>
 {% else %}<div class="panel"><p class="note">Очередь пуста.</p></div>{% endfor %}{% endblock %}

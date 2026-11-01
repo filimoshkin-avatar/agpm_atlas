@@ -47,7 +47,8 @@ def edit_link(conn: psycopg.Connection, material_id: str, item_key: str, *, acto
 
 def pending_edits(conn: psycopg.Connection) -> list[dict[str, Any]]:
     """Правки, ещё не вошедшие ни в одну версию."""
-    return [dict(r) for r in conn.execute("SELECT * FROM edits WHERE version IS NULL ORDER BY id")]
+    return [dict(r) for r in conn.execute(
+        "SELECT * FROM edits WHERE version IS NULL AND object IN ('material', 'link', 'item') ORDER BY id")]
 
 
 def release_edits(conn: psycopg.Connection, *, version: str, slice_date: date, title: str,
@@ -57,7 +58,7 @@ def release_edits(conn: psycopg.Connection, *, version: str, slice_date: date, t
     pipeline.recompute(conn, version, None, report, default_note="правка редактора")
     pipeline.release(conn, version=version, title=title, note=note,
                      slice_date=slice_date, new_issues=0, report=report, editorial=editorial)
-    conn.execute("UPDATE edits SET version = %s WHERE version IS NULL", (version,))
+    conn.execute("UPDATE edits SET version = %s WHERE version IS NULL AND object IN ('material', 'link', 'item')", (version,))
     return report
 
 
