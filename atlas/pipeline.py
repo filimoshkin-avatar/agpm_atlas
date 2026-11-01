@@ -407,6 +407,7 @@ def run_week(conn: psycopg.Connection, *, end: date, model: Model, sources: Sour
         conn.commit()
 
     recompute(conn, version, run_id, report)
+    rewrite_passports(conn, report, model, run_id, version)
     if report.classified or report.signal_changes:
         new_issues = [d for d in report.issues if d > prev["slice"].isoformat()]
         release(conn, version=version,
@@ -423,3 +424,73 @@ def run_week(conn: psycopg.Connection, *, end: date, model: Model, sources: Sour
     )
     conn.commit()
     return report
+
+
+# ---------- тексты паспортов после смены сигнала ----------
+
+PASSPORT_PROMPT_VERSION = "passport_v1"
+ROLE_ORDER = ["внедрение с именем", "опровержение", "независимый обзор", "кейс по данным продавца", "продукт"]
+
+
+def _passport_prompt(conn, item: dict[str, Any], old_signal: str | None) -> tuple[str, str]:
+    from atlas import ROOT
+    from atlas.classify import RULES_FILE
+    import re as _re
+    rules_text = RULES_FILE.read_text(encoding="utf-8")
+    section8 = _re.search(r"(?ms)^## 8\..*?(?=^## )", rules_text).group(0)
+    links = conn.execute(
+        """SELECT l.role, l.counts, l.quote, m.num, m.outlet, m.summary FROM links l JOIN materials m ON m.id = l.material_id
+           WHERE l.item_key = %s AND m.status = 'in_atlas'""", (item["key"],)).fetchall()
+    rank = lambda l: (not l["counts"], ROLE_ORDER.index(l["role"]) if l["role"] in ROLE_ORDER else 99, l["num"])
+    links = sorted(links, key=rank)[:12]
+    materials = "\n".join(f"- № {l['num']}, {l['role']}, {'учитывается' if l['counts'] else 'не учитывается'}, {l['outlet']}: "
+                          f"{l['summary'][:350]}{(' Цитата: «' + l['quote'][:250] + '»') if l['quote'] else ''}" for l in links)
+    names = {"confirmed": "Подтвердилось", "claimed": "Заявлено", "refuted": "Не подтвердилось", None: "—"}
+    cell = f"коридор {item['corridor']}, уровень {item['level']}" if item["kind"] == "scenario" else f"соседняя территория, уровень {item['level']}"
+    template = (ROOT / "prompts" / f"{PASSPORT_PROMPT_VERSION}.md").read_text(encoding="utf-8")
+    prompt = template.format(rules=section8, title=item["title"], cell=cell, what=item["what"], old_signal=names[old_signal],
+                             new_signal=names[item["signal"]], old_why=item["why"], old_card_line=item["card_line"], materials=materials)
+    haystack = "\n".join(f"{l['summary']} {l['quote']}" for l in links)
+    return prompt, haystack
+
+
+def _validate_passport(d: Any) -> list[str]:
+    if not isinstance(d, dict) or not isinstance(d.get("why"), str) or not isinstance(d.get("card_line"), str):
+        return ["нужен объект {why, card_line} со строками"]
+    e = []
+    if not d["why"].strip() or len(d["why"]) > 400:
+        e.append(f"why пустое или длиннее 400 знаков ({len(d['why'])})")
+    if not d["card_line"].strip() or len(d["card_line"]) > 114:
+        e.append(f"card_line пустое или длиннее 114 знаков ({len(d['card_line'])})")
+    return e
+
+
+def rewrite_passports(conn, report: WeekReport, model: Model, run_id: int | None, version: str) -> int:
+    """После смены сигнала переписывает why и card_line, если редактор их не закрепил."""
+    done = 0
+    for change in report.signal_changes:
+        item = conn.execute("SELECT * FROM items WHERE key = %s", (change["key"],)).fetchone()
+        pinned = {f for f, meta in (item["field_meta"] or {}).items() if meta.get("pinned")}
+        if {"why", "card_line"} <= pinned:
+            continue
+        prompt, haystack = _passport_prompt(conn, item, change["from"])
+        try:
+            d = model.ask(prompt, prompt_version=PASSPORT_PROMPT_VERSION, validate=_validate_passport)["data"]
+        except ModelError as exc:
+            _queue(conn, "тексты паспорта", item["key"], f"модель не переписала тексты: {exc}", version, run_id, report)
+            continue
+        why, card = language.fix(d["why"]), language.fix(d["card_line"])
+        problems = language.violations(f"{why} {card}") + [f"число {n} без источника" for n in numbers.missing(f"{why} {card}", haystack)]
+        if problems:
+            _queue(conn, "тексты паспорта", item["key"], "; ".join(problems) + f". Предложено: {why} | {card}", version, run_id, report)
+            continue
+        for field, value in (("why", why), ("card_line", card)):
+            if field in pinned or item[field] == value:
+                continue
+            conn.execute("INSERT INTO edits (actor, object, object_id, field, before, after, reason, version) VALUES ('автоматика', 'item', %s, %s, %s, %s, 'смена сигнала', %s)",
+                         (item["key"], field, json.dumps(item[field], ensure_ascii=False), json.dumps(value, ensure_ascii=False), version))
+            conn.execute(f"UPDATE items SET {field} = %s WHERE key = %s", (value, item["key"]))  # noqa: S608 — why/card_line
+        conn.execute("INSERT INTO decisions (kind, model, prompt_version, data, run_id) VALUES ('passport', %s, %s, %s, %s)",
+                     (model.model, PASSPORT_PROMPT_VERSION, json.dumps({"item": item["key"], **d}, ensure_ascii=False), run_id))
+        done += 1
+    return done

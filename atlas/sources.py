@@ -187,14 +187,40 @@ class Fetcher:
         return SourceText(url_norm, "fetch", "failed", "", detail)
 
 
+BROWSER_SCRIPT = Path(__file__).resolve().parent.parent / "tools" / "fetch_page.cjs"
+
+
+def browser_fetch(url: str) -> SourceText:
+    """Страница, текст которой рисует скрипт: безголовый браузер на управляющем сервере."""
+    import subprocess
+    url_norm = normalize_url(url)
+    try:
+        done = subprocess.run(["node", str(BROWSER_SCRIPT), url], capture_output=True, timeout=60, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return SourceText(url_norm, "fetch", "failed", "", f"браузер: {exc}"[:200])
+    if done.returncode != 0:
+        return SourceText(url_norm, "fetch", "failed", "", "браузер: страница не открылась")
+    text = extract_text(done.stdout.decode("utf-8", "replace"))
+    status = "ok" if len(text) >= MIN_TEXT else "short"
+    return SourceText(url_norm, "fetch", status, text, "через браузер")
+
+
 class Sources:
-    def __init__(self, cache: RadarCache | None = None, fetcher: Fetcher | None = None) -> None:
+    def __init__(self, cache: RadarCache | None = None, fetcher: Fetcher | None = None, browser=None) -> None:
         self.cache = cache if cache is not None else RadarCache()
         self.fetcher = fetcher if fetcher is not None else Fetcher()
+        enabled = os.environ.get("ATLAS_BROWSER_FETCH", "1") != "0" and BROWSER_SCRIPT.exists()
+        self.browser = browser if browser is not None else (browser_fetch if enabled else None)
 
     def get(self, url: str) -> SourceText:
         url_norm = normalize_url(url)
         cached = self.cache.get(url_norm)
         if cached:
             return SourceText(url_norm, "radar-cache", "ok", cached)
-        return self.fetcher.fetch(url)
+        got = self.fetcher.fetch(url)
+        # Запрет robots.txt, вход и платный доступ («blocked») браузером не обходятся.
+        if got.status in ("short", "failed") and self.browser is not None:
+            tried = self.browser(url)
+            if tried.status == "ok" or (tried.status == "short" and len(tried.text) > len(got.text)):
+                return tried
+        return got

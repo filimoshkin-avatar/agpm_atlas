@@ -29,6 +29,8 @@ class FakeSources:
 
 
 def stub_answer(prompt):
+    if "Ты пишешь два текста паспорта сценария" in prompt:
+        return json.dumps({"why": "Acme сама рассказала о применении агента для разбора заявок.", "card_line": "Acme: агент разбирает заявки"}, ensure_ascii=False)
     material = prompt.split("Материал\n\n", 1)[1]
     title = material.split("\n", 1)[0].removeprefix("Название в радаре: ")
     excluded = title.startswith("A")
@@ -136,3 +138,16 @@ def test_editor_correction_reverts_signal_pins_link_and_journals_it(base, tmp_pa
     assert hist["note"] == "правка редактора"
     row = base.execute("SELECT state, changes FROM versions WHERE id = '2026-11-01-2'").fetchone()
     assert row["state"] == "held" and row["changes"]["editorial"] and rep.signal_changes
+
+
+def test_signal_change_rewrites_passport_texts_unless_pinned(base, tmp_path):
+    base.execute("""UPDATE items SET field_meta = '{"card_line": {"pinned": true}}' WHERE key = 'A2_intake'""")
+    base.commit()
+    model = Model("stub", lambda m, p: stub_answer(p), cache_dir=tmp_path)
+    report = pipeline.run_week(base, end=date(2026, 11, 1), model=model, sources=FakeSources(), get=getter)
+    if not report.signal_changes:
+        pytest.skip("в образце нет учитываемых связей")
+    row = base.execute("SELECT why, card_line FROM items WHERE key = 'A2_intake'").fetchone()
+    assert row["why"].startswith("Acme сама рассказала")
+    assert row["card_line"] == "monday.com, ПМ Форсайт"  # закреплённое редактором не тронуто
+    assert base.execute("SELECT count(*) AS n FROM edits WHERE actor = 'автоматика' AND object_id = 'A2_intake'").fetchone()["n"] == 1

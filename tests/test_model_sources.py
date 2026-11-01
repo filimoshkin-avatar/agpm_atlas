@@ -55,3 +55,23 @@ def test_missing_cache_falls_back_to_fetch(tmp_path):
             return SourceText("https://ex.com/b", "fetch", "failed", "", "HTTP 500")
 
     assert Sources(RadarCache([tmp_path / "нет"]), Fake()).get("https://ex.com/b").status == "failed"
+
+
+def test_browser_fallback_only_for_short_or_failed(tmp_path):
+    class Short:
+        def fetch(self, url):
+            return SourceText("https://ex.com/c", "fetch", "short", "мало", "")
+
+    class Blocked:
+        def fetch(self, url):
+            return SourceText("https://ex.com/c", "fetch", "blocked", "", "robots.txt запрещает")
+
+    calls = []
+    def browser(url):
+        calls.append(url)
+        return SourceText("https://ex.com/c", "fetch", "ok", "т" * 700, "через браузер")
+
+    got = Sources(RadarCache([tmp_path]), Short(), browser).get("https://ex.com/c")
+    assert got.status == "ok" and got.detail == "через браузер"
+    assert Sources(RadarCache([tmp_path]), Blocked(), browser).get("https://ex.com/c").status == "blocked"
+    assert calls == ["https://ex.com/c"]
