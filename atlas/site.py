@@ -36,6 +36,13 @@ def _ru_date(iso: str) -> str:
     return f"{d} {_MONTHS[m - 1]} {y}"
 
 
+def _clip(text: str, limit: int) -> str:
+    """Обрезает по последнему пробелу до предела, с многоточием."""
+    if len(text) <= limit:
+        return text
+    return text[: text.rfind(" ", 0, limit - 1)].rstrip(" ,;:—") + "…"
+
+
 def _pl(n: int, one: str, few: str, many: str) -> str:
     return f"{n} {plural(n, one, few, many)}"
 
@@ -86,7 +93,7 @@ def pages(snap: dict[str, Any]) -> list[Page]:
         sec = sections[m["section"]]["name"]
         out.append(Page(
             f"m/{m['num']}/", f"№ {m['num']}. {m['title']} — Атлас AgPM", f"№ {m['num']}. {m['title']}",
-            f"{m['outlet']} · раздел «{sec}» · доказательность: {m['evidence']}. {m['summary']}".strip()[:300],
+            _clip(f"{m['outlet']} · раздел «{sec}» · доказательность: {m['evidence']}. {m['summary']}".strip(), 300),
         ))
     out.append(Page(
         "sections/", "Разделы — Атлас AgPM", "Девять разделов указателя",
