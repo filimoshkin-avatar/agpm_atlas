@@ -410,3 +410,5 @@ footer .links a:hover { color:var(--tx); text-decoration:underline; }
 /* Плашка снимка версии /v/ГГГГ-ММ-ДД/ — сборка сайта, не прототип. */
 .snapbar{margin-top:12px;padding:8px 12px;border:1px solid var(--line2);border-radius:var(--r-ctl);font-size:14px;color:var(--tx2)}
 .snapbar a{color:var(--accent)}
+/* Поля ввода в строках кабинета вне .field — тем же видом, что поля прототипа. */
+.cab .toolbar input:not([type=checkbox]):not([type=radio]) { background:var(--raised); border:1px solid var(--line2); border-radius:var(--r-ctl); color:var(--tx); font:inherit; padding:8px 12px; height:36px; }
