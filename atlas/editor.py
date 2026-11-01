@@ -313,3 +313,57 @@ def add_ref(conn, kind: str, *, actor: str, reason: str = "", **values: Any) -> 
         conn.execute(f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))})",  # noqa: S608
                      (key, *[values.get(f, "").strip() for f in fields], position))
     _journal(conn, actor, "ref", f"{kind}:{key}", "created", None, values, reason)
+
+
+# ---------- перенос, объединение, снятие сценария ----------
+
+def move_item(conn, key: str, *, actor: str, reason: str, corridor: str, level: int, sub_area: str = "") -> None:
+    if not reason.strip():
+        raise ValueError("у переноса нужна причина")
+    row = conn.execute("SELECT kind, corridor, level, sub_area FROM items WHERE key = %s", (key,)).fetchone()
+    if row is None or row["kind"] != "scenario":
+        raise LookupError("переносить можно только сценарий матрицы")
+    if corridor not in ("I", "II", "III", "IV") or level not in (1, 2, 3, 4):
+        raise ValueError("клетка — коридор I–IV и уровень 1–4")
+    _journal(conn, actor, "item", key, "cell", {"corridor": row["corridor"], "level": row["level"], "sub_area": row["sub_area"]},
+             {"corridor": corridor, "level": level, "sub_area": sub_area}, reason)
+    conn.execute("UPDATE items SET corridor = %s, level = %s, sub_area = %s WHERE key = %s", (corridor, level, sub_area, key))
+    _pin(conn, "items", "key", key, ["corridor", "level", "sub_area"], actor)
+
+
+def merge_item(conn, key: str, into: str, *, actor: str, reason: str) -> int:
+    """Связи переходят к наследнику (кроме уже существующих), пункт — «объединён»."""
+    if not reason.strip():
+        raise ValueError("у объединения нужна причина")
+    if key == into:
+        raise ValueError("сценарий нельзя объединить с самим собой")
+    src = conn.execute("SELECT kind, status FROM items WHERE key = %s", (key,)).fetchone()
+    dst = conn.execute("SELECT kind, status FROM items WHERE key = %s", (into,)).fetchone()
+    if not src or not dst or src["kind"] == "loss" or dst["kind"] == "loss" or dst["status"] in ("merged", "retired"):
+        raise LookupError("объединять можно действующие сценарии и территории")
+    moved = 0
+    for link in conn.execute("SELECT * FROM links WHERE item_key = %s", (key,)).fetchall():
+        exists = conn.execute("SELECT 1 FROM links WHERE material_id = %s AND item_key = %s", (link["material_id"], into)).fetchone()
+        if not exists:
+            conn.execute("UPDATE links SET item_key = %s WHERE material_id = %s AND item_key = %s", (into, link["material_id"], key))
+            moved += 1
+        else:
+            conn.execute("DELETE FROM links WHERE material_id = %s AND item_key = %s", (link["material_id"], key))
+    _journal(conn, actor, "item", key, "merged", None, {"into": into, "links_moved": moved}, reason)
+    conn.execute("UPDATE items SET status = 'merged', successor = %s, signal_origin = CASE WHEN kind = 'loss' THEN NULL ELSE 'rule' END WHERE key = %s", (into, key))
+    return moved
+
+
+def retire_item(conn, key: str, *, actor: str, reason: str) -> int:
+    """Снятие с матрицы: связи снимаются (материалы остаются в указателе), адрес ведёт на объяснение."""
+    if not reason.strip():
+        raise ValueError("у снятия нужна причина")
+    row = conn.execute("SELECT kind FROM items WHERE key = %s", (key,)).fetchone()
+    if row is None or row["kind"] == "loss":
+        raise LookupError("снять можно сценарий или территорию")
+    links = conn.execute("SELECT material_id FROM links WHERE item_key = %s", (key,)).fetchall()
+    for link in links:
+        remove_link(conn, link["material_id"], key, actor=actor, reason=f"снятие сценария: {reason}")
+    _journal(conn, actor, "item", key, "retired", None, True, reason)
+    conn.execute("UPDATE items SET status = 'retired' WHERE key = %s", (key,))
+    return len(links)

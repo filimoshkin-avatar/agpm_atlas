@@ -73,7 +73,7 @@ def pages(snap: dict[str, Any]) -> list[Page]:
         f"Подтвердилось — {legend['confirmed']}, заявлено — {legend['claimed']}, не подтвердилось — {legend['refuted']}.",
     )]
     for item in snap["items"]:
-        n = c["item_materials"][item["key"]]
+        n = c["item_materials"].get(item["key"], 0)
         if item["kind"] == "scenario":
             where = f"Коридор {item['corridor']} «{corridors[item['corridor']]['name']}», уровень {item['level']} — {levels[item['level']]['name'].lower()}"
         elif item["kind"] == "neighbor":

@@ -71,3 +71,19 @@ def test_rebuild_swaps_folder_under_same_name(week):
     assert data["computed"]["item_history"]["A2_intake"][-1]["version"] == "2026-11-01"
     assert len(data["computed"]["new_materials"]) == report.classified
     assert before  # старые ассеты были
+
+
+def test_cleanup_keeps_current_and_young_folders(week):
+    import os
+    import time
+    conn, report, root = week
+    publish.publish(conn, "2026-10-09", actor="тест", root=root)
+    publish.publish(conn, "2026-11-01", actor="тест", root=root, force_sharp=True)
+    old = time.time() - 100 * 86400
+    for name in ("2026-10-09", "2026-11-01"):
+        os.utime(root / "releases" / name, (old, old))
+    (root / "releases" / ".x.replaced-1").mkdir()
+    os.utime(root / "releases" / ".x.replaced-1", (old, old))
+    removed = publish.cleanup(conn, root)
+    assert removed == {"versions": ["2026-10-09"], "leftovers": [".x.replaced-1"]}
+    assert (root / "current" / "index.html").is_file()

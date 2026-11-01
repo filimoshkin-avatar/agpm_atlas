@@ -75,6 +75,7 @@ def _items(conn: psycopg.Connection) -> list[dict[str, Any]]:
             "card_line": r["card_line"], "what": r["what"], "why": r["why"], "signal": r["signal"],
             "signal_origin": r["signal_origin"], "status": r["status"], "origin": r["origin"],
             "history": history.get(r["key"], []),
+            **({"successor": r["successor"]} if r["successor"] else {}),
         }
         for r in conn.execute("SELECT * FROM items ORDER BY position")
     ]

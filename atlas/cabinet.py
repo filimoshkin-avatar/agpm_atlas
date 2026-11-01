@@ -338,6 +338,19 @@ class Cabinet:
     def scenario_post(self, conn, user, parts: list[str], form: dict[str, str]) -> Response:
         key = parts[1]
         back = f"{PREFIX}/scenario?key={key}"
+        if len(parts) > 2 and parts[2] == "move":
+            editor.move_item(conn, key, actor=user["email"], reason=form.get("reason", ""), corridor=form["corridor"],
+                             level=int(form["level"]), sub_area=form.get("sub_area", "").strip())
+            conn.commit()
+            return redirect(f"{back}&m=Сценарий перенесён; попадёт в следующую версию")
+        if len(parts) > 2 and parts[2] == "merge":
+            n = editor.merge_item(conn, key, form["into"], actor=user["email"], reason=form.get("reason", ""))
+            conn.commit()
+            return redirect(f"{PREFIX}/scenario?key={form['into']}&m=Объединено, перенесено связей: {n}")
+        if len(parts) > 2 and parts[2] == "retire":
+            n = editor.retire_item(conn, key, actor=user["email"], reason=form.get("reason", ""))
+            conn.commit()
+            return redirect(f"{back}&m=Сценарий снят, снято связей: {n}")
         if len(parts) > 2 and parts[2] == "signal":
             editor.set_signal(conn, key, form.get("signal") or None, actor=user["email"], reason=form.get("reason", ""))
             conn.commit()

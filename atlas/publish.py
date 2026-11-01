@@ -178,6 +178,37 @@ def rebuild(conn: psycopg.Connection, version: str, *, actor: str, root: Path = 
     return {"version": version, "replaced": stale.name, "pages": manifest["pages"]}
 
 
+KEEP_DAYS = 90
+
+
+def cleanup(conn: psycopg.Connection, root: Path = SITE_ROOT, *, now: float | None = None) -> dict[str, list[str]]:
+    """Собранные папки версий хранятся 90 дней; снимки в базе — всегда.
+
+    Текущая версия и задержанные не трогаются. Старая папка пересобирается
+    из снимка по запросу (`atlas.cli build-site` или первая публикация).
+    Остатки пересборок (.replaced-*) и прерванных сборок (.building)
+    убираются через сутки.
+    """
+    import shutil
+    import time
+    now = now or time.time()
+    keep = {r["id"] for r in conn.execute("SELECT id FROM versions WHERE state IN ('current', 'held')")}
+    removed: dict[str, list[str]] = {"versions": [], "leftovers": []}
+    releases = root / "releases"
+    if not releases.exists():
+        return removed
+    for path in releases.iterdir():
+        age_days = (now - path.stat().st_mtime) / 86400
+        if path.name.startswith("."):
+            if age_days > 1:
+                shutil.rmtree(path, ignore_errors=True)
+                removed["leftovers"].append(path.name)
+        elif path.name not in keep and age_days > KEEP_DAYS:
+            shutil.rmtree(path, ignore_errors=True)
+            removed["versions"].append(path.name)
+    return removed
+
+
 def preview(conn: psycopg.Connection, version: str, root: Path = SITE_ROOT) -> str:
     """Собирает папку задержанной версии для предпросмотра по скрытому адресу /v/<версия>/ (noindex)."""
     _build(conn, version, root)
@@ -233,6 +264,7 @@ def publish(conn: psycopg.Connection, version: str, *, actor: str, root: Path = 
     _journal(conn, actor, version, "publish", [c.id for c in report.checks])
     conn.commit()
     switch_current(root, version)
+    cleanup(conn, root)
     return report
 
 

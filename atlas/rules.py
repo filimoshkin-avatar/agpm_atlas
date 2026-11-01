@@ -58,6 +58,13 @@ def item_signal(item: Json, links: Iterable[Json], *, previous: str | None = Non
     return Signal("claimed", False, "rule")
 
 
+INACTIVE = frozenset({"merged", "retired"})
+
+
+def active_items(data: Json) -> list[Json]:
+    return [i for i in data["items"] if i.get("status") not in INACTIVE]
+
+
 def signals(data: Json) -> dict[str, Signal]:
     by_item: dict[str, list[Json]] = {}
     for link in data["links"]:
@@ -77,7 +84,8 @@ def _distinct(links: Iterable[Json]) -> int:
 
 class Counters:
     def __init__(self, data: Json) -> None:
-        self.data = data
+        self.data = {**data, "items": active_items(data)}
+        data = self.data
         self.by_item: dict[str, list[Json]] = {}
         for link in data["links"]:
             self.by_item.setdefault(link["item"], []).append(link)
@@ -153,7 +161,7 @@ def num_word(n: int, one: str, few: str, many: str) -> str:
 def conditions(data: Json) -> dict[str, Any]:
     """Условия показа выводов листа (`Правила_атласа.md`, раздел 12)."""
     counters = Counters(data)
-    items = data["items"]
+    items = active_items(data)
     scenarios = [i for i in items if i["kind"] == "scenario"]
     level4 = [i for i in scenarios if i["level"] == 4]
     corridors = sorted(
@@ -184,6 +192,7 @@ BUILT_OPS = {"exists": "есть хотя бы один", "none": "нет ни �
 
 
 def built_condition(data: Json, cond: Mapping[str, Any]) -> bool:
+    data = {**data, "items": active_items(data)}
     levels = {"": {1, 2, 3, 4}, "1-3": {1, 2, 3}}.get(str(cond.get("level", "")), None)
     if levels is None:
         levels = {int(cond["level"])}

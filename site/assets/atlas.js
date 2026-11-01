@@ -28,7 +28,9 @@
   const loadMaterials = () => materialsLoaded || (materialsLoaded = fetchJSON(HTML.dataset.materials).then(list => {
     D.materials = list; M = new Map(list.map(m => [m.id, m])); MN = new Map(list.map(m => [m.num, m]));
   }));
+  /* Объединённые и снятые сценарии не показываются на матрице, но их адрес ведёт на объяснение. */
   const IT = new Map(D.items.map(i => [i.key, i]));
+  D.items = D.items.filter(i => i.status !== 'merged' && i.status !== 'retired');
   const linksByItem = {}, linksByMat = {};
   D.links.forEach(l => { (linksByItem[l.item] = linksByItem[l.item] || []).push(l); (linksByMat[l.material] = linksByMat[l.material] || []).push(l); });
   const SEC = Object.fromEntries(R.sections.map(s => [s.key, s]));
@@ -351,14 +353,34 @@
   }
 
   /* ---------- версии ---------- */
-  const allVersions = () => D.versions;
-  function viewVersions() {
+  /* Задержанные версии видны только по скрытому адресу предпросмотра, в архиве их нет. */
+  const allVersions = () => D.versions.filter(v => v.state !== 'held');
+  function compareHTML(q, vs) {
+    const opts = sel => vs.map(v => `<option value="${esc(v.id)}"${v.id === sel ? ' selected' : ''}>${esc(fmtShort(v.date))} · ${esc(v.title)}</option>`).join('');
+    const a = vs.find(v => v.id === q.a), b = vs.find(v => v.id === q.b);
+    let table = '';
+    if (a && b) {
+      const at = (key, id) => ((C.item_history || {})[key] || []).find(h => h.version === id);
+      const rows = [...IT.values()].filter(i => i.kind !== 'loss').map(i => ({ i, x: at(i.key, a.id), y: at(i.key, b.id) }))
+        .filter(r => r.x || r.y)
+        .map(r => ({ ...r, changed: !r.x || !r.y || r.x.signal !== r.y.signal || r.x.materials !== r.y.materials }))
+        .sort((p, q2) => (q2.changed - p.changed) || p.i.short.localeCompare(q2.i.short));
+      const cell = h => h ? `<span style="display:inline-flex;align-items:center;gap:6px">${mark(h.signal, 13)}${esc(sigName(h.signal))} · ${h.materials}</span>` : '<span class="note">нет</span>';
+      table = `<div class="diff"><div><span>материалов</span><b>${a.materials} → ${b.materials}</b><i>${b.materials - a.materials >= 0 ? '+' : ''}${b.materials - a.materials}</i></div><div><span>изменилось сценариев и территорий</span><b>${rows.filter(r => r.changed).length}</b><i>из ${rows.length}</i></div></div>
+        <table class="tbl"><thead><tr><th>Сценарий</th><th>${esc(fmtShort(a.date))}</th><th>${esc(fmtShort(b.date))}</th></tr></thead><tbody>${rows.map(r => `<tr${r.changed ? '' : ' class="sub"'}><td><a href="${link(['scenario', r.i.key])}">${esc(r.i.short)}</a></td><td>${cell(r.x)}</td><td>${cell(r.y)}</td></tr>`).join('')}</tbody></table>`;
+    }
+    return `<h2 class="h">Сравнить две версии</h2><form class="filters" id="cmp"><select name="a" aria-label="Первая версия">${opts(q.a || (vs[vs.length - 1] || {}).id)}</select><select name="b" aria-label="Вторая версия">${opts(q.b || (vs[0] || {}).id)}</select><button class="btn" type="submit">Сравнить</button></form>${table}`;
+  }
+  function viewVersions(q) {
+    q = q || {};
     setNav('versions');
-    const vs = allVersions().slice().sort((a, b) => b.date.localeCompare(a.date));
+    const vs = allVersions().slice().sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
     app.innerHTML = `<div class="col"><p class="kicker">Версии атласа</p><h1 class="title" style="font-size:36px">Архив срезов</h1>
       <p class="lead">Каждая публикация создаёт неизменяемую версию: снимок данных, сводку изменений и копию сайта на дату. Текущая версия — ${fmtDate(D.version.slice)}.</p>
-      <ul class="vlist">${vs.map(v => `<li><span class="d">${fmtShort(v.date)}</span><span class="ct">${pl(v.materials, 'материал', 'материала', 'материалов')}</span><span>${esc(v.title)}${v.state === 'current' ? ' <span class="tag ok">текущая</span>' : ''}${v.state === 'held' ? ' <span class="tag">ждёт проверки</span>' : ''}${v.state === 'reverted' ? ' <span class="tag">отменена</span>' : ''}<div class="note">${esc(v.summary)}</div></span><span><a class="btn small" href="${link(['versions', v.id])}">Что изменилось</a></span></li>`).join('')}</ul>
-</div>`;
+      <ul class="vlist">${vs.map(v => `<li><span class="d">${fmtShort(v.date)}</span><span class="ct">${pl(v.materials, 'материал', 'материала', 'материалов')}</span><span>${esc(v.title)}${v.state === 'current' ? ' <span class="tag ok">текущая</span>' : ''}${v.state === 'held' ? ' <span class="tag">ждёт проверки</span>' : ''}${v.state === 'rolled_back' ? ' <span class="tag">отменена</span>' : ''}<div class="note">${esc(v.summary)}</div></span><span><a class="btn small" href="${link(['versions', v.id])}">Что изменилось</a></span></li>`).join('')}</ul>
+      ${vs.length > 1 ? compareHTML(q, vs) : ''}</div>`;
+    const cmp = app.querySelector('#cmp');
+    if (cmp) cmp.addEventListener('submit', e => { e.preventDefault(); const f = new FormData(cmp); nav(link(['versions'], { a: f.get('a'), b: f.get('b') }), false); });
   }
   function viewVersion(id) {
     setNav('versions');
@@ -413,6 +435,13 @@
       <p class="note">Расстановка сценариев — для обсуждения рабочей группой. Полный текст правил: файл «Правила атласа» в репозитории.</p></div>`;
   }
 
+  function retiredView(it) {
+    setNav('matrix');
+    const next = it.successor && IT.get(it.successor);
+    app.innerHTML = `<div class="col"><p class="kicker">${it.status === 'merged' ? 'Сценарий объединён' : 'Сценарий снят с матрицы'}</p><h1 class="title" style="font-size:34px">${esc(it.title)}</h1>
+      <p class="lead">${it.status === 'merged' && next ? `Редакция объединила этот сценарий с «${esc(next.title)}»: его материалы теперь там.` : 'Редакция сняла этот сценарий с матрицы; его материалы остались в указателе.'}</p>
+      <p>${next ? `<a class="btn" href="${link(['scenario', next.key])}">Открыть «${esc(next.short)}»</a> ` : ''}<a class="btn" href="${BASE}">К матрице</a></p></div>`;
+  }
   function notFound() { app.innerHTML = `<div class="col"><p class="kicker">Страницы нет</p><h1 class="title" style="font-size:34px">Такого адреса в атласе нет</h1><p class="lead">Проверьте ссылку или вернитесь к матрице.</p><p><a class="btn" href="${BASE}">К матрице</a></p></div>`; }
 
   /* ---------- маршрутизация ---------- */
@@ -422,12 +451,12 @@
     const p0 = parts[0] || '';
     if (NEEDS_MATERIALS.has(p0)) await loadMaterials();
     if (!p0) viewMatrix(null);
-    else if (p0 === 'scenario') { if (IT.has(parts[1])) viewMatrix(parts[1]); else notFound(); }
+    else if (p0 === 'scenario') { const it = IT.get(parts[1]); if (!it) notFound(); else if (it.status === 'merged' || it.status === 'retired') retiredView(it); else viewMatrix(parts[1]); }
     else if (p0 === 'index') viewIndex(q, null);
     else if (p0 === 'm') { const n = Number(parts[1]); if (MN.has(n)) viewIndex({}, n); else notFound(); }
     else if (p0 === 'sections') viewSections();
     else if (p0 === 'section') { if (parts[1] === 'practice' && parts[2]) viewSection('practice', parts[2]); else viewSection(parts[1]); }
-    else if (p0 === 'versions') { if (parts[1]) viewVersion(parts[1]); else viewVersions(); }
+    else if (p0 === 'versions') { if (parts[1]) viewVersion(parts[1]); else viewVersions(q); }
     else if (p0 === 'method') viewMethod();
     else notFound();
     if (scroll !== false && p0 !== 'scenario') window.scrollTo(0, 0);
