@@ -24,6 +24,7 @@ EVIDENCE = ("сильная", "средняя", "слабая")
 VERDICTS = ("confirmed", "corrected", "unrelated", "no_source")
 SPEAKERS = ("vendor", "consultant", "researcher", "user_org", "media", "other")
 GRADES = ("confirms", "claims", "warns", "refutes", "background")
+_FLAG_ALIASES = {f.strip("«»").lower(): f for f in FLAGS} | {"agent wash": "мнимая агентность"}
 SOURCE_LIMIT = 15_000
 SUMMARY_WORDS = 70
 EXAMPLES = 6
@@ -161,6 +162,8 @@ class Context:
             e.append(f"type вне списка: {d['type']}")
         if d["evidence"] not in EVIDENCE:
             e.append(f"evidence вне списка: {d['evidence']}")
+        # Модель иногда пишет флаг без «ёлочек» или в другом регистре — это тот же флаг.
+        d["flags"] = [_FLAG_ALIASES.get(str(f).strip(" «»\"'").lower(), f) for f in d["flags"]]
         bad_flags = [f for f in d["flags"] if f not in FLAGS]
         if bad_flags:
             e.append(f"флаги вне списка: {bad_flags}")

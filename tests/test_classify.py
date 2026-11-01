@@ -50,3 +50,10 @@ def test_independent_review_may_confirm_or_refute(empty_db):
     for grade in ("confirms", "refutes"):
         d = _good() | {"links": [{"item": "V4_auto", "role": "независимый обзор", "grade": grade, "counts": True, "basis": "м", "quote": "q"}]}
         assert ctx.validate(d) == []
+
+
+def test_flag_spelling_variants_are_normalized(empty_db):
+    ctx = _ctx(empty_db)
+    d = _good() | {"flags": ["как заявлено", "Agent wash"]}
+    assert ctx.validate(d) == []
+    assert d["flags"] == ["«как заявлено»", "мнимая агентность"]
