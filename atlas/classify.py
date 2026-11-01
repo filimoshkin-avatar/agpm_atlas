@@ -1,6 +1,6 @@
 """Разбор материала моделью: сверка с источником и классификация одним запросом.
 
-Инструкция — `prompts/material_v1.md`; правила вставляются в неё из
+Инструкция — `prompts/material_v2.md`; правила вставляются в неё из
 `Правила_атласа.md` (разделы 2–5, 8–10), примеры — из ручной разметки
 ближайших по словам материалов. Ответ проверяется по закрытым спискам; цифры,
 цитаты и учёт связи для сигнала потом проверяет код (`atlas.pipeline`).
@@ -15,7 +15,7 @@ from typing import Any
 
 from atlas import ROOT
 
-PROMPT_VERSION = "material_v1"
+PROMPT_VERSION = "material_v2"
 PROMPT = (ROOT / "prompts" / f"{PROMPT_VERSION}.md").read_text(encoding="utf-8")
 RULES_FILE = ROOT / "Правила_атласа.md"
 RULE_SECTIONS = ("2", "3", "4", "5", "8", "9", "10")
@@ -93,7 +93,8 @@ class Context:
         link_text = "; ".join(f"{l['item']} — {l['role']} ({l['grade']}{', учитывается' if l['counts'] else ''})" for l in links) or "нет"
         return (f"- «{m['title']}» ({m['outlet']}): {m['summary'][:400]}\n"
                 f"  раздел {m['section']}{', практика ' + m['practice'] if m['practice'] else ''}; тип {m['type']}; "
-                f"доказательность {m['evidence']}; флаги {', '.join(m['flags']) or 'нет'}; связи: {link_text}")
+                f"доказательность {m['evidence']}; флаги {', '.join(m['flags']) or 'нет'}; связи: {link_text}\n"
+                f"  цифры: {'; '.join(m['numbers']) or 'нет'}; вывод: {m['takeaway'] or 'нет'}")
 
     def prompt(self, item: Any, source_text: str) -> str:
         examples = nearest(f"{item.title_orig} {item.description}", self.pool)
@@ -163,6 +164,9 @@ class Context:
         bad_flags = [f for f in d["flags"] if f not in FLAGS]
         if bad_flags:
             e.append(f"флаги вне списка: {bad_flags}")
+        long_numbers = [n for n in d["numbers"] if not isinstance(n, str) or len(n) > 120]
+        if long_numbers:
+            e.append(f"записи numbers длиннее 120 знаков: {len(long_numbers)} — нужны короткие записи")
         words = len(d["summary"].split())
         if not d["summary"].strip() or words > SUMMARY_WORDS:
             e.append(f"summary пустая или длиннее {SUMMARY_WORDS} слов ({words})")
