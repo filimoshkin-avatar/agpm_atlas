@@ -1,0 +1,7 @@
+{% extends "base.html.j2" %}
+{% block body %}<div class="col"><p class="kicker">Кабинет редактора</p><h1 class="title" style="font-size:32px">{% block heading %}{% endblock %}</h1></div>
+<div class="cab col" style="margin-top:18px"><aside class="side"><div class="who"><b>{{ user.name }}</b>
+<form method="post" action="{{ prefix }}/logout" style="display:inline"><input type="hidden" name="csrf" value="{{ user.csrf }}"><button class="btn small" type="submit">выйти</button></form></div>
+<a href="{{ prefix }}/feed" class="{{ 'on' if active == 'feed' }}">Лента изменений<em>{{ counts.versions }}</em></a>
+<a href="{{ prefix }}/queue" class="{{ 'on' if active == 'queue' }}">Очередь на внимание<em>{{ counts.queue }}</em></a>
+<a href="/" target="_blank" rel="noopener">Открыть сайт</a></aside><div>{% block content %}{% endblock %}</div></div>{% endblock %}

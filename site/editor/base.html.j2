@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow"><title>{% block title %}Кабинет{% endblock %} — Атлас AgPM</title>
+<script>(function(){var t=null;try{t=localStorage.getItem('atlas-theme');}catch(e){}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}document.documentElement.setAttribute('data-theme',t);})();</script>
+<link rel="stylesheet" href="{{ prefix }}/assets/fonts.css"><link rel="stylesheet" href="{{ prefix }}/assets/atlas.css">
+<link rel="icon" href="{{ prefix }}/assets/logo/favicon.svg" type="image/svg+xml"></head>
+<body><div class="page">{% block body %}{% endblock %}</div></body></html>

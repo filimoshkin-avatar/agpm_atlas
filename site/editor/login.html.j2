@@ -1,0 +1,6 @@
+{% extends "base.html.j2" %}{% block title %}Вход{% endblock %}
+{% block body %}<div class="login"><h2>Кабинет редактора</h2><p class="note">Вход только для редакторов атласа.</p>
+{% if error %}<p class="note" role="alert"><b>{{ error }}</b></p>{% endif %}
+<form method="post" action="{{ prefix }}/login"><label class="field"><span>Почта</span><input type="email" name="email" autocomplete="username" required></label>
+<label class="field"><span>Пароль</span><input type="password" name="password" autocomplete="current-password" required></label>
+<button class="btn primary" type="submit">Войти</button></form></div>{% endblock %}

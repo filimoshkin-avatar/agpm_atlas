@@ -9,7 +9,7 @@ from pathlib import Path
 
 from datetime import date
 
-from atlas import PROTOTYPE, REFERENCE_JSON, ROOT, db, editor, importer, pipeline, publish, reconcile, site, snapshot
+from atlas import PROTOTYPE, REFERENCE_JSON, ROOT, cabinet, db, editor, importer, pipeline, publish, reconcile, site, snapshot
 from atlas.model import Model
 
 
@@ -137,6 +137,22 @@ def cmd_rollback(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_add_editor(args: argparse.Namespace) -> int:
+    import secrets
+    password = secrets.token_urlsafe(12)
+    with db.connect() as conn:
+        db.migrate(conn)
+        cabinet.add_editor(conn, args.email, args.name, args.role, password)
+    print(json.dumps({"email": args.email.lower(), "role": args.role, "password": password,
+                      "note": "пароль показан один раз, в базе только хеш argon2"}, ensure_ascii=False))
+    return 0
+
+
+def cmd_cabinet(args: argparse.Namespace) -> int:
+    cabinet.serve(args.host, args.port)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="atlas")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -181,6 +197,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--actor", default="дежурный")
     p.add_argument("--root", type=Path)
     p.set_defaults(func=cmd_rollback)
+    p = sub.add_parser("add-editor", help="учётная запись кабинета; пароль генерируется и показывается один раз")
+    p.add_argument("--email", required=True)
+    p.add_argument("--name", required=True)
+    p.add_argument("--role", choices=["editor", "admin"], default="editor")
+    p.set_defaults(func=cmd_add_editor)
+    p = sub.add_parser("cabinet", help="запустить кабинет (за Caddy)")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8790)
+    p.set_defaults(func=cmd_cabinet)
     args = parser.parse_args(argv)
     return args.func(args)
 
