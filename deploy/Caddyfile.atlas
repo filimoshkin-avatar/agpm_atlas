@@ -30,7 +30,6 @@ atlas.agpm.space {
 	redir /editor /editor/ 301
 	handle /editor/* {
 		reverse_proxy 127.0.0.1:8790 {
-			header_up X-Forwarded-Host {host}
 			header_down -Server
 		}
 	}
