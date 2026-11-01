@@ -20,19 +20,24 @@
   const C = D.computed;
   const NEW = new Set(C.new_materials || []);
   D.materials = [];
+  D.links = D.links || [];
   const R = D.refs;
 
   /* ---------- индексы ---------- */
   let M = new Map(), MN = new Map();
   let materialsLoaded = null;
-  const loadMaterials = () => materialsLoaded || (materialsLoaded = fetchJSON(HTML.dataset.materials).then(list => {
+  const loadMaterials = () => materialsLoaded || (materialsLoaded = fetchJSON(HTML.dataset.materials).then(pack => {
+    const list = pack.materials;
     D.materials = list; M = new Map(list.map(m => [m.id, m])); MN = new Map(list.map(m => [m.num, m]));
+    D.links = pack.links; indexLinks();
   }));
   /* Объединённые и снятые сценарии не показываются на матрице, но их адрес ведёт на объяснение. */
   const IT = new Map(D.items.map(i => [i.key, i]));
   D.items = D.items.filter(i => i.status !== 'merged' && i.status !== 'retired');
-  const linksByItem = {}, linksByMat = {};
-  D.links.forEach(l => { (linksByItem[l.item] = linksByItem[l.item] || []).push(l); (linksByMat[l.material] = linksByMat[l.material] || []).push(l); });
+  /* Связи приходят вместе с материалами (главной они не нужны: числа посчитаны при сборке). */
+  let linksByItem = {}, linksByMat = {};
+  const indexLinks = () => { linksByItem = {}; linksByMat = {}; D.links.forEach(l => { (linksByItem[l.item] = linksByItem[l.item] || []).push(l); (linksByMat[l.material] = linksByMat[l.material] || []).push(l); }); };
+  const itemCount = key => (C.item_materials && key in C.item_materials) ? C.item_materials[key] : (linksByItem[key] || []).length;
   const SEC = Object.fromEntries(R.sections.map(s => [s.key, s]));
   const PR = Object.fromEntries(R.practices.map(p => [p.key, p]));
   const COR = Object.fromEntries(R.corridors.map(c => [c.key, c]));
@@ -119,8 +124,8 @@
   }
   function treeHTML(active) {
     const a = active || {};
-    const sc = R.corridors.map(c => `<li><a href="${link(['index'], { cor: c.key })}" class="${a.cor === c.key ? 'on' : ''}">${esc(c.name)}<em>${corridorMats(c.key)}</em></a><ul>${scenariosIn(c.key).sort((x, y) => y.level - x.level).map(i => `<li><a href="${link(['scenario', i.key])}" class="${a.item === i.key ? 'on' : ''}"><span class="mk">${mark(i.signal, 12)}${esc(i.short)}</span><em>${(linksByItem[i.key] || []).length}</em></a></li>`).join('')}</ul></li>`).join('');
-    const nb = D.items.filter(i => i.kind === 'neighbor').sort((x, y) => y.level - x.level).map(i => `<li><a href="${link(['scenario', i.key])}" class="${a.item === i.key ? 'on' : ''}"><span class="mk">${mark(i.signal, 12)}${esc(i.short)}</span><em>${(linksByItem[i.key] || []).length}</em></a></li>`).join('');
+    const sc = R.corridors.map(c => `<li><a href="${link(['index'], { cor: c.key })}" class="${a.cor === c.key ? 'on' : ''}">${esc(c.name)}<em>${corridorMats(c.key)}</em></a><ul>${scenariosIn(c.key).sort((x, y) => y.level - x.level).map(i => `<li><a href="${link(['scenario', i.key])}" class="${a.item === i.key ? 'on' : ''}"><span class="mk">${mark(i.signal, 12)}${esc(i.short)}</span><em>${itemCount(i.key)}</em></a></li>`).join('')}</ul></li>`).join('');
+    const nb = D.items.filter(i => i.kind === 'neighbor').sort((x, y) => y.level - x.level).map(i => `<li><a href="${link(['scenario', i.key])}" class="${a.item === i.key ? 'on' : ''}"><span class="mk">${mark(i.signal, 12)}${esc(i.short)}</span><em>${itemCount(i.key)}</em></a></li>`).join('');
     const secs = R.sections.map(s => `<li><a href="${link(['section', s.key])}" class="${a.sec === s.key && !a.pr ? 'on' : ''}">${esc(s.short)}<em>${secCount(s.key)}</em></a>${s.key === 'practice' ? `<ul>${R.practices.map(p => ({ ...p, n: prCount(p.key) })).sort((x, y) => y.n - x.n).map(p => `<li><a href="${link(['section', 'practice', p.key])}" class="${a.pr === p.key ? 'on' : ''}">${esc(p.name)}<em>${p.n}</em></a></li>`).join('')}</ul>` : ''}</li>`).join('');
     return `<nav class="rail" id="rail" aria-label="Рубрикатор"><button type="button" class="btn small rail-close" data-rail-close aria-label="Закрыть рубрикатор">${ICON.close}Закрыть</button><ul class="tree">
       <li><div class="grp">Главная матрица</div><ul>${sc}</ul></li>
@@ -185,7 +190,7 @@
     let col = 2; const neigh = [];
     groups.forEach((g, gi) => {
       neigh.push(`<div class="lvl" style="grid-column:${col}/${col + g.items.length}">${g.lv} · ${esc(LV[g.lv].name)}</div>`);
-      g.items.forEach((i, ii) => { neigh.push(`<a class="nc${col === 2 ? ' first' : ''}${ii === 0 && gi > 0 ? ' grp' : ''}${selected === i.key ? ' sel' : ''}" style="grid-column:${col}" href="${link(['scenario', i.key])}" aria-label="${esc(i.short)}. Соседняя территория. Сигнал: ${esc(sigName(i.signal))}. Материалов радара: ${(linksByItem[i.key] || []).length}"><span class="mk">${mark(i.signal, 18)}<span class="ct">${(linksByItem[i.key] || []).length}</span></span><span class="t">${esc(i.short)}</span><span class="l">${esc(i.card_line)}</span></a>`); col++; });
+      g.items.forEach((i, ii) => { neigh.push(`<a class="nc${col === 2 ? ' first' : ''}${ii === 0 && gi > 0 ? ' grp' : ''}${selected === i.key ? ' sel' : ''}" style="grid-column:${col}" href="${link(['scenario', i.key])}" aria-label="${esc(i.short)}. Соседняя территория. Сигнал: ${esc(sigName(i.signal))}. Материалов радара: ${itemCount(i.key)}"><span class="mk">${mark(i.signal, 18)}<span class="ct">${itemCount(i.key)}</span></span><span class="t">${esc(i.short)}</span><span class="l">${esc(i.card_line)}</span></a>`); col++; });
     });
     const gapT = sheetText('gap');
     const legend = ['confirmed', 'claimed', 'refuted'].map(s => `<div class="it">${mark(s, 22)}<div><b>${esc(sigName(s))}</b><span class="ct">· ${pl(sigCount('scenario', s), 'сценарий', 'сценария', 'сценариев')}</span><span>${esc(R.signal_rules[s])}</span></div></div>`).join('');
@@ -200,7 +205,7 @@
       <div class="notes"><p>${esc(notes)}</p><p>Учтено ${pl(totalMats(), 'материал', 'материала', 'материалов')} радара — все сигналы с ${fmtDate(D.version.radar_range.from)} по ${fmtDate(D.version.radar_range.to)} года: ${months}. Каждый лежит в одном из девяти разделов атласа, ${linkedMats()} подкрепляют сценарии — ${scenarioMats()} на главной матрице и ${neighborMats()} на соседних территориях.</p></div>
     </div></div>`;
   }
-  const scHTML = (i, selected) => `<a class="sc${selected === i.key ? ' sel' : ''}" href="${link(['scenario', i.key])}" aria-label="${esc(i.short)}. Сигнал: ${esc(sigName(i.signal))}. Материалов радара: ${(linksByItem[i.key] || []).length}"><span class="mk">${mark(i.signal, 18)}<span class="ct">${(linksByItem[i.key] || []).length}</span></span><span><span class="t">${esc(i.short)}</span><span class="l">${esc(i.card_line)}</span>${i.status === 'new' ? '<span class="tag new tg">новый</span>' : ''}</span></a>`;
+  const scHTML = (i, selected) => `<a class="sc${selected === i.key ? ' sel' : ''}" href="${link(['scenario', i.key])}" aria-label="${esc(i.short)}. Сигнал: ${esc(sigName(i.signal))}. Материалов радара: ${itemCount(i.key)}"><span class="mk">${mark(i.signal, 18)}<span class="ct">${itemCount(i.key)}</span></span><span><span class="t">${esc(i.short)}</span><span class="l">${esc(i.card_line)}</span>${i.status === 'new' ? '<span class="tag new tg">новый</span>' : ''}</span></a>`;
   function listHTML(selected) {
     const cors = R.corridors.map(c => `<section class="cor"><h2>${c.key} · ${esc(c.name)}</h2><div class="sb">${esc(c.sub)} · ${pl(corridorMats(c.key), 'материал', 'материала', 'материалов')}</div>${R.levels.map(l => { const its = D.items.filter(i => i.corridor === c.key && i.level === l.n && i.kind !== 'neighbor'); if (!its.length) return ''; return `<div class="lv"><div class="ln">${l.n} · ${esc(l.name)}</div>${its.map(i => i.kind === 'loss' ? `<a class="sc" href="${link(['scenario', i.key])}"><span class="mk">${mark(null, 18)}</span><span><span class="t">Главная зона потерь</span><span class="l">${esc(i.card_title)}</span></span></a>` : scHTML(i, selected)).join('')}</div>`; }).join('')}</section>`).join('');
     const nb = `<section class="cor"><h2>Соседние территории</h2><div class="sb">что агентам уже доверяют вне проектов</div>${D.items.filter(i => i.kind === 'neighbor').sort((a, b) => b.level - a.level).map(i => scHTML(i, selected)).join('')}</section>`;

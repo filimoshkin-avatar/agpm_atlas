@@ -19,7 +19,7 @@ const PAGES = [
   ['index-filter', '/index/?sec=practice&pr=nadzor'], ['material', '/m/117/'], ['sections', '/sections/'],
   ['section', '/section/incident/'], ['practice', '/section/practice/nadzor/'], ['versions', '/versions/'],
   ['version', '/versions/2026-10-09/'], ['method', '/method/'], ['snapshot', '/v/2026-10-09/'],
-  ['snapshot-material', '/v/2026-10-09/m/117/'],
+  ['snapshot-material', '/v/2026-10-09/m/117/'], ['compare', '/versions/?a=2026-10-09&b=2026-10-27-2'],
 ];
 const SHOT_PAGES = new Set(['home', 'scenario', 'index', 'section', 'method']);
 const HOME_BUDGET = 300 * 1024;
@@ -59,7 +59,7 @@ const HOME_BUDGET = 300 * 1024;
         if (name === 'home' && width === 1440 && theme === 'dark') {
           report.homeBytesWithoutFonts = bytes;
           if (bytes > HOME_BUDGET) failures.push(`главная без шрифтов ${bytes} байт > ${HOME_BUDGET}`);
-          for (const needle of ['37 материалов', '85 материалов', '59 материалов', '33 материала', '111 материалов', '794 материала']) {
+          for (const needle of (process.env.ATLAS_EXPECT || '37 материалов|85 материалов|59 материалов|33 материала|111 материалов|794 материала').split('|')) {
             if (!state.text.includes(needle)) failures.push(`главная: нет «${needle}»`);
           }
         }

@@ -62,7 +62,7 @@ def test_core_data_has_no_materials_and_sitemap_skips_snapshots(built):
     snap, out, manifest = built
     core = next(n for n in manifest["files"] if n.startswith("data/core."))
     data = json.loads((out / core).read_text(encoding="utf-8"))
-    assert "materials" not in data and data["computed"]["material_total"] == 794
+    assert "materials" not in data and "links" not in data and data["computed"]["material_total"] == 794
     sitemap = (out / "sitemap.xml").read_text(encoding="utf-8")
     assert sitemap.count("<loc>") == manifest["pages"] and "/v/" not in sitemap
     assert "Disallow: /v/" in (out / "robots.txt").read_text(encoding="utf-8")

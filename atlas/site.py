@@ -142,8 +142,9 @@ def build(snap: dict[str, Any], out: Path) -> dict[str, Any]:
 
     data_dir = out / "data"
     data_dir.mkdir()
-    core = {k: v for k, v in snap.items() if k != "materials"}
-    files = {"core": core, "materials": snap["materials"]}
+    # Главная грузит только ядро; материалы и связи — отдельным файлом, когда нужны (паспорт, указатель, разделы).
+    core = {k: v for k, v in snap.items() if k not in ("materials", "links")}
+    files = {"core": core, "materials": {"materials": snap["materials"], "links": snap["links"]}}
     data_names: dict[str, str] = {}
     for name, payload in files.items():
         raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
