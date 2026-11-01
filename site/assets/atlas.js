@@ -340,22 +340,21 @@
     const vs = allVersions().slice().sort((a, b) => b.date.localeCompare(a.date));
     app.innerHTML = `<div class="col"><p class="kicker">Версии атласа</p><h1 class="title" style="font-size:36px">Архив срезов</h1>
       <p class="lead">Каждая публикация создаёт неизменяемую версию: снимок данных, сводку изменений и копию сайта на дату. Текущая версия — ${fmtDate(D.version.slice)}.</p>
-      <ul class="vlist">${vs.map(v => `<li><span class="d">${fmtShort(v.date)}</span><span class="ct">${pl(v.materials, 'материал', 'материала', 'материалов')}</span><span>${esc(v.title)}${v.demo ? ' <span class="tag demo">макет</span>' : ''}${v.state === 'current' ? ' <span class="tag ok">текущая</span>' : ''}${v.state === 'reverted' ? ' <span class="tag">отменена</span>' : ''}<div class="note">${esc(v.summary)}</div></span><span><a class="btn small" href="${link(['versions', v.id])}">Что изменилось</a></span></li>`).join('')}</ul>
+      <ul class="vlist">${vs.map(v => `<li><span class="d">${fmtShort(v.date)}</span><span class="ct">${pl(v.materials, 'материал', 'материала', 'материалов')}</span><span>${esc(v.title)}${v.state === 'current' ? ' <span class="tag ok">текущая</span>' : ''}${v.state === 'held' ? ' <span class="tag">ждёт проверки</span>' : ''}${v.state === 'reverted' ? ' <span class="tag">отменена</span>' : ''}<div class="note">${esc(v.summary)}</div></span><span><a class="btn small" href="${link(['versions', v.id])}">Что изменилось</a></span></li>`).join('')}</ul>
 </div>`;
   }
   function viewVersion(id) {
     setNav('versions');
     const v = allVersions().find(x => x.id === id); if (!v) return notFound();
     let body;
-    if (!v.demo) {
+    if (!v.changes) {
       body = `<div class="diff"><div><span>материалов</span><b>${totalMats()}</b><i>ручная разметка перенесена</i></div><div><span>сценариев матрицы</span><b>${D.items.filter(i => i.kind === 'scenario').length}</b></div><div><span>соседних территорий</span><b>${D.items.filter(i => i.kind === 'neighbor').length}</b></div><div><span>подтвердилось · заявлено · не подтвердилось</span><b>${sigCount('scenario', 'confirmed')} · ${sigCount('scenario', 'claimed')} · ${sigCount('scenario', 'refuted')}</b><i>сценарии матрицы</i></div></div>
         <h2 class="h">Что вошло</h2><p class="prose">${esc(D.version.note)} Все сигналы, роли материалов и тексты паспортов имеют происхождение «ручная разметка 2026-10-09»: автоматика их не переоценивает и не удаляет. Связь обзора № 117 со сценарием «Подсказки и черновики планов» перенесена как не учитываемая для сигнала: методика обзора не описана.</p>
         <h2 class="h">Новые материалы по разделам</h2><div class="chips">${R.sections.map(s => `<a class="chip" href="${link(['index'], { sec: s.key })}">${esc(s.short)} <em>+${secCount(s.key)}</em></a>`).join('')}</div>`;
     } else {
       const ch = v.changes;
       const block = (title, items, fn) => items && items.length ? `<h2 class="h">${title}</h2>${items.map(fn).join('')}` : '';
-      body = `<p class="note"><span class="tag demo">макет</span> Условные данные: показывают устройство страницы «Что изменилось». В данных атласа этой версии нет.</p>
-        <div class="diff">${ch.totals.map(t => `<div><span>${esc(t.name)}</span><b>${esc(t.to)}</b><i>${[t.from && t.from !== '—' ? `было ${esc(t.from)}` : '', t.note ? esc(t.note) : ''].filter(Boolean).join(' · ')}</i></div>`).join('')}</div>
+      body = `<div class="diff">${ch.totals.map(t => `<div><span>${esc(t.name)}</span><b>${esc(t.to)}</b><i>${[t.from && t.from !== '—' ? `было ${esc(t.from)}` : '', t.note ? esc(t.note) : ''].filter(Boolean).join(' · ')}</i></div>`).join('')}</div>
         ${block('Смены сигналов', ch.signals, c => `<div class="change"><span class="mk">${mark(c.to, 18)}</span><div><b>${esc(c.item)}</b>: было «${esc(sigName(c.from))}», стало «${esc(sigName(c.to))}»<div class="w">${esc(c.material)} — «${esc(c.quote)}»</div></div></div>`)}
         ${block('Новые сценарии и территории', ch.new_items, c => `<div class="change"><span class="mk">${mark(c.signal, 18)}</span><div><b>${esc(c.title)}</b> · ${esc(c.cell)}<div class="w">${esc(c.note)}</div></div></div>`)}
         ${block('Новые материалы', ch.materials, c => `<div class="change"><span class="mk">${mark(null, 18)}</span><div>${esc(c.section)}: +${c.n}<div class="w">${esc(c.note)}</div></div></div>`)}

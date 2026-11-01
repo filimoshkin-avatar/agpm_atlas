@@ -7,7 +7,10 @@ import json
 import sys
 from pathlib import Path
 
-from atlas import PROTOTYPE, REFERENCE_JSON, ROOT, db, importer, reconcile, site, snapshot
+from datetime import date
+
+from atlas import PROTOTYPE, REFERENCE_JSON, ROOT, db, importer, pipeline, reconcile, site, snapshot
+from atlas.model import Model
 
 
 def cmd_migrate(args: argparse.Namespace) -> int:
@@ -76,6 +79,20 @@ def cmd_build_site(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_week(args: argparse.Namespace) -> int:
+    """Недельный прогон до даты среза включительно; версия ждёт проверки."""
+    model = Model(args.model) if args.model else Model()
+    with db.connect() as conn:
+        db.migrate(conn)
+        report = pipeline.run_week(conn, end=date.fromisoformat(args.end), model=model)
+    out = {k: v for k, v in report.__dict__.items() if k != "signal_changes"}
+    out["signal_changes"] = [f"{c['item']}: {c['from']} → {c['to']}" for c in report.signal_changes]
+    out["model"] = {"calls": model.usage.calls, "cached": model.usage.cached, "tokens": model.usage.tokens,
+                    "seconds": round(model.usage.seconds), "failures": len(model.usage.failures)}
+    print(json.dumps(out, ensure_ascii=False))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="atlas")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -89,6 +106,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--version", default="2026-10-09")
     p.add_argument("--out", type=Path)
     p.set_defaults(func=cmd_build_site)
+    p = sub.add_parser("week", help="недельный прогон: забор, разбор моделью, пересчёт, версия")
+    p.add_argument("--end", required=True, help="дата среза ГГГГ-ММ-ДД")
+    p.add_argument("--model", help="модель, по умолчанию ATLAS_MODEL или openai/gpt-6.1-sol")
+    p.set_defaults(func=cmd_week)
     args = parser.parse_args(argv)
     return args.func(args)
 

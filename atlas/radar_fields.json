@@ -1,0 +1,12 @@
+{
+  "_about": "Соответствие полей выгрузки радара V2 полям атласа. При смене формата радара меняется только этот файл. Список — первое непустое поле по порядку.",
+  "radar_id": ["id"],
+  "url": ["canonicalUrl", "url"],
+  "title_orig": ["title"],
+  "perimeter": ["perimeter"],
+  "pub_date": ["publishedAt"],
+  "pub_date_status": ["publicationDateStatus"],
+  "description": ["summary", "brief", "llmShortText"],
+  "takeaway_hint": ["agpmTakeaway", "llmAgpmAngle"],
+  "rubrics": ["rubrics"]
+}
