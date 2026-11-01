@@ -17,13 +17,13 @@
 <label class="field">{{ lab('evidence', 'Доказательность') }}<select name="evidence">{% for e in ['сильная', 'средняя', 'слабая'] %}<option{{ ' selected' if e == m.evidence }}>{{ e }}</option>{% endfor %}</select></label>
 <label class="field">{{ lab('pub_date', 'Дата публикации') }}<input name="pub_date" type="date" value="{{ m.pub_date or '' }}"></label>
 <label class="field">{{ lab('flags', 'Флаги через запятую') }}<input name="flags" value="{{ m.flags | join(', ') }}"></label></div>
-<label class="field">{{ lab('summary', 'Суть') }}<textarea name="summary">{{ m.summary }}</textarea></label>
+<label class="field">{{ lab('summary', 'Суть') }}<textarea name="summary" rows="7">{{ m.summary }}</textarea></label>
 <label class="field">{{ lab('numbers', 'Цифры — по одной в строке') }}<textarea name="numbers">{% for n in m.numbers %}{{ n.text }}
 {% endfor %}</textarea></label>
 <label class="field">{{ lab('takeaway', 'Вывод для проектной работы') }}<textarea name="takeaway">{{ m.takeaway }}</textarea></label>
 <label class="field"><span>Причина правки</span><input name="reason"></label>
 <div class="toolbar"><button class="btn primary" type="submit">Сохранить и закрепить</button></div></form>
-<form method="post" action="{{ prefix }}/material/{{ m.id }}/exclude" class="toolbar"><input type="hidden" name="csrf" value="{{ user.csrf }}"><label class="field" style="margin:0;min-width:320px"><span>Причина исключения</span><input name="reason" required placeholder="например: не об ИИ-агентах"></label><button class="btn danger" type="submit">Исключить из атласа</button></form>{% endif %}</div>
+<form method="post" action="{{ prefix }}/material/{{ m.id }}/exclude" class="toolbar" data-confirm="Исключить материал из атласа? Номер останется занятым."><input type="hidden" name="csrf" value="{{ user.csrf }}"><label class="field" style="margin:0;min-width:320px"><span>Причина исключения</span><input name="reason" required placeholder="например: не об ИИ-агентах"></label><button class="btn danger" type="submit">Исключить из атласа</button></form>{% endif %}</div>
 
 <div class="panel"><h3>Связи со сценариями · {{ links | length }}</h3>
 {% for l in links %}<form method="post" action="{{ prefix }}/link/{{ m.id }}/{{ l.item_key }}" class="toolbar" style="border-bottom:1px solid var(--line);padding-bottom:12px"><input type="hidden" name="csrf" value="{{ user.csrf }}">

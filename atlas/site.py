@@ -170,7 +170,7 @@ def build(snap: dict[str, Any], out: Path) -> dict[str, Any]:
     not_found = template.render(
         root="/", core=data_names["core"], materials=data_names["materials"],
         title="Страницы нет — Атлас AgPM", heading="Такого адреса в атласе нет",
-        description="Проверьте ссылку или вернитесь к матрице.", canonical="", noindex=True,
+        description="Проверьте ссылку или вернитесь к матрице.", canonical="", noindex=True, notfound=True,
         slice_line=slice_line, fonts_css=hashed["fonts.css"], atlas_css=hashed["atlas.css"], atlas_js=hashed["atlas.js"],
     )
     (out / "404.html").write_text(not_found, encoding="utf-8")

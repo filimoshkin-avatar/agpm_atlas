@@ -94,7 +94,16 @@
     return { parts, q, path };
   }
   const link = (parts, q) => BASE + parts.map(encodeURIComponent).join('/') + (parts.length ? '/' : '') + (q && Object.keys(q).some(k => q[k] !== '' && q[k] != null) ? '?' + Object.entries(q).filter(([, v]) => v !== '' && v != null).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&') : '');
-  const nav = (href, scroll) => { history.pushState(null, '', href); route(scroll); };
+  const reduced = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const behavior = () => (reduced() ? 'auto' : 'smooth');
+  /* Переход без перезагрузки запоминает прокрутку текущей записи истории: «Назад» вернёт на то же место. */
+  const nav = (href, scroll, state) => {
+    try { history.replaceState({ ...(history.state || {}), y: window.scrollY }, ''); } catch (e) { }
+    history.pushState(state || null, '', href);
+    return route(scroll);
+  };
+  const SITE = 'Атлас AgPM';
+  const setTitle = t => { document.title = (BASE !== '/' ? `Версия на ${fmtShort(D.version.slice)} · ` : '') + (t ? `${t} — ${SITE}` : 'Атлас агентного управления проектами'); };
 
   /* ---------- общие части ---------- */
   const app = document.getElementById('app');
@@ -105,7 +114,7 @@
     const v = D.version;
     /* «С прошлой версии»: итог текущей версии одной строкой со ссылкой на «Что изменилось». */
     const cur = D.versions.find(x => x.id === v.id), prev = v.prev && D.versions.find(x => x.id === v.prev);
-    const since = cur && prev && cur.changes ? `<span class="since">с ${fmtDate(prev.date)}: ${esc(cur.changes.summary || '')} · <a href="${link(['versions', v.id])}">что изменилось</a></span>` : '';
+    const since = cur && prev && cur.changes ? `<span class="since">с прошлой версии (${fmtShort(prev.date)}): ${esc(cur.changes.summary || '')} · <a href="${link(['versions', v.id])}">что изменилось</a></span>` : '';
     return `<div class="slice"><b>Срез на ${fmtDate(v.slice)}</b><span>${pl(totalMats(), 'материал', 'материала', 'материалов')} из ${pl(v.radar_range.issues, 'выпуска', 'выпусков', 'выпусков')} <a href="https://radar.agpm.space/" target="_blank" rel="noopener">AgPM Radar</a></span>${since}</div>`;
   }
   function treeHTML(active) {
@@ -113,7 +122,7 @@
     const sc = R.corridors.map(c => `<li><a href="${link(['index'], { cor: c.key })}" class="${a.cor === c.key ? 'on' : ''}">${esc(c.name)}<em>${corridorMats(c.key)}</em></a><ul>${scenariosIn(c.key).sort((x, y) => y.level - x.level).map(i => `<li><a href="${link(['scenario', i.key])}" class="${a.item === i.key ? 'on' : ''}"><span class="mk">${mark(i.signal, 12)}${esc(i.short)}</span><em>${(linksByItem[i.key] || []).length}</em></a></li>`).join('')}</ul></li>`).join('');
     const nb = D.items.filter(i => i.kind === 'neighbor').sort((x, y) => y.level - x.level).map(i => `<li><a href="${link(['scenario', i.key])}" class="${a.item === i.key ? 'on' : ''}"><span class="mk">${mark(i.signal, 12)}${esc(i.short)}</span><em>${(linksByItem[i.key] || []).length}</em></a></li>`).join('');
     const secs = R.sections.map(s => `<li><a href="${link(['section', s.key])}" class="${a.sec === s.key && !a.pr ? 'on' : ''}">${esc(s.short)}<em>${secCount(s.key)}</em></a>${s.key === 'practice' ? `<ul>${R.practices.map(p => ({ ...p, n: prCount(p.key) })).sort((x, y) => y.n - x.n).map(p => `<li><a href="${link(['section', 'practice', p.key])}" class="${a.pr === p.key ? 'on' : ''}">${esc(p.name)}<em>${p.n}</em></a></li>`).join('')}</ul>` : ''}</li>`).join('');
-    return `<nav class="rail" id="rail" aria-label="Рубрикатор"><ul class="tree">
+    return `<nav class="rail" id="rail" aria-label="Рубрикатор"><button type="button" class="btn small rail-close" data-rail-close aria-label="Закрыть рубрикатор">${ICON.close}Закрыть</button><ul class="tree">
       <li><div class="grp">Главная матрица</div><ul>${sc}</ul></li>
       <li><div class="grp">Соседние территории</div><ul>${nb}</ul></li>
       <li><div class="grp">Разделы указателя</div><ul><li><a href="${link(['index'])}" class="${a.all ? 'on' : ''}">Все материалы<em>${totalMats()}</em></a></li>${secs}</ul></li>
@@ -128,14 +137,20 @@
     unlock: '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 4.6-1.3"/></svg>',
     sheet: '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M8 2v12M2 8h12"/></svg>'
   };
-  const drawerBtn = `<button type="button" class="btn drawer-btn" data-drawer>${ICON.menu}Рубрикатор</button><div class="scrim" data-scrim></div>`;
+  const drawerBtn = `<button type="button" class="btn drawer-btn" data-drawer aria-controls="rail" aria-expanded="false">${ICON.menu}Рубрикатор</button><div class="scrim" data-scrim></div>`;
   function bindDrawer() {
     const b = app.querySelector('[data-drawer]'), rail = app.querySelector('#rail'), scrim = app.querySelector('[data-scrim]');
     if (!b || !rail) return;
-    const close = () => { rail.classList.remove('open'); scrim.classList.remove('on'); };
-    b.addEventListener('click', () => { rail.classList.toggle('open'); scrim.classList.toggle('on'); });
-    scrim.addEventListener('click', close);
-    rail.addEventListener('click', e => { if (e.target.closest('a')) close(); });
+    const set = open => {
+      rail.classList.toggle('open', open); scrim.classList.toggle('on', open);
+      b.setAttribute('aria-expanded', open ? 'true' : 'false');
+      document.body.classList.toggle('drawer-open', open);
+      if (open) { const first = rail.querySelector('a'); if (first) first.focus(); } else b.focus({ preventScroll: true });
+    };
+    b.addEventListener('click', () => set(!rail.classList.contains('open')));
+    scrim.addEventListener('click', () => set(false));
+    rail.addEventListener('click', e => { if (e.target.closest('[data-rail-close]')) set(false); else if (e.target.closest('a')) { rail.classList.remove('open'); scrim.classList.remove('on'); document.body.classList.remove('drawer-open'); } });
+    rail.addEventListener('keydown', e => { if (e.key === 'Escape' && rail.classList.contains('open')) { e.stopPropagation(); set(false); } });
   }
   const crumbs = items => `<div class="crumbs">${items.map((c, i) => c.href ? `<a href="${c.href}">${esc(c.name)}</a>${i < items.length - 1 ? '<span>›</span>' : ''}` : `<span>${esc(c.name)}</span>`).join('')}</div>`;
   const ptl = key => { const it = IT.get(key); if (!it) return ''; return `<a class="ptl" href="${link(['scenario', key])}" title="${esc(whereLine(it))}">${mark(it.signal, 13)}<span><em>${esc(itemCode(it))}</em> <u>${esc(it.short)}</u></span></a>`; };
@@ -227,17 +242,22 @@
       <h1 class="title">Что агентам уже доверяют в проектной работе</h1>
       <p class="lead">Четыре коридора проектной деятельности, четыре уровня самостоятельности агента. У каждого сценария — сигнал: подтвердилось, заявлено или не подтвердилось, и материалы AgPM Radar, на которых он держится. Нажмите на сценарий, чтобы открыть паспорт.</p>
       ${sliceLine()}
-      <div class="viewsw" role="group" aria-label="Вид"><button type="button" class="btn small" data-view="list" aria-pressed="true">Списком</button><button type="button" class="btn small" data-view="sheet" aria-pressed="false">Листом</button></div></header>
+      <div class="viewsw" role="group" aria-label="Вид"><button type="button" class="btn small" data-view="list" aria-pressed="true">Списком</button><button type="button" class="btn small" data-view="sheet" aria-pressed="false">Листом</button></div><p class="scrollhint note">Лист шире экрана: прокрутите его вбок или переключитесь на вид «Списком».</p></header>
       ${sheetHTML(selected)}${listHTML(selected)}
       <section class="passport${selected ? '' : ' empty'} col" id="passport" aria-live="polite">${selected ? passportHTML(selected) : `${ICON.sheet}<span>Выберите сценарий на матрице, соседнюю территорию или зону потерь — здесь появится паспорт.</span>`}</section>`;
     const sw = app.querySelector('.viewsw');
-    let view = 'list'; try { view = localStorage.getItem('atlas-view') || 'list'; } catch (e) { }
-    const applyView = () => { app.querySelector('#sheet').classList.toggle('force', view === 'sheet'); app.querySelector('#sheetList').classList.toggle('off', view === 'sheet'); sw.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === view ? 'true' : 'false')); };
+    let view = window.innerWidth <= 640 ? 'list' : 'sheet'; try { view = localStorage.getItem('atlas-view') || view; } catch (e) { }
+    const applyView = () => {
+      const sheet = app.querySelector('#sheet'), list = app.querySelector('#sheetList');
+      sheet.classList.toggle('force', view === 'sheet'); list.classList.toggle('off', view === 'sheet');
+      sheet.classList.toggle('hide', view === 'list'); list.classList.toggle('show', view === 'list');
+      sw.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === view ? 'true' : 'false'));
+    };
     applyView();
     sw.addEventListener('click', e => { const b = e.target.closest('[data-view]'); if (!b) return; view = b.dataset.view; try { localStorage.setItem('atlas-view', view); } catch (err) { } applyView(); });
     const pass = app.querySelector('#passport');
-    pass.addEventListener('click', e => { if (e.target.closest('.pp-close')) nav(BASE, false); });
-    if (selected) setTimeout(() => pass.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+    pass.addEventListener('click', e => { if (e.target.closest('.pp-close, [data-tomap]')) { e.preventDefault(); e.stopPropagation(); closePassport(selected); } });
+    if (selected) setTimeout(() => pass.scrollIntoView({ behavior: behavior(), block: 'start' }), 60);
   }
 
   /* ---------- указатель ---------- */
@@ -265,20 +285,31 @@
     return `<tr class="row${open ? ' open' : ''}" data-k="${m.id}"><td class="sid"><button type="button" class="rowbtn" aria-expanded="${open ? 'true' : 'false'}" aria-label="№ ${m.num}: ${open ? 'свернуть' : 'раскрыть'} суть">№ ${m.num}</button></td><td><b>${esc(m.title)}</b><div class="sub">${esc(m.outlet)}</div></td><td class="sec">${esc(SEC[m.section].name)}${m.practice ? `<div class="sub">${esc(PR[m.practice].name)}</div>` : ''}</td><td class="pt${ls.length ? '' : ' none'}">${ls.map(l => ptl(l.item)).join('') || '—'}</td><td class="ev">${esc(m.type)}<br>${esc(m.evidence)}${m.flags.length ? '<br>' + esc(m.flags.join(', ')) : ''}</td><td class="dt">${m.pub_date ? fmtShort(m.pub_date) : '<span title="дата публикации не установлена">не установлена</span>'}</td></tr>`;
   }
   function detHTML(m) {
-    return `<tr class="det"><td class="sid"></td><td colspan="5"><div class="det-in">${m.summary ? `<div class="ms">${esc(m.summary)}</div>` : ''}<div class="mm">${esc(R.desc_origin[m.desc_origin])}${m.radar_dates.length ? ` В радаре: ${m.radar_dates.map(fmtShort).join(', ')}.` : ''}${m.pub_date ? ` Дата публикации: ${fmtDate(m.pub_date)}.` : ''}</div>${m.numbers.length ? `<div class="num"><b>Цифры:</b> ${esc(m.numbers.join('; '))}</div>` : ''}${m.takeaway ? `<div class="tk">${esc(m.takeaway)}</div>` : ''}<div class="mm src"><a href="${esc(m.url)}" target="_blank" rel="noopener noreferrer">Открыть источник<i class="ext" aria-hidden="true"></i></a> · <a href="${link(['m', String(m.num)])}">постоянная ссылка</a></div></div></td></tr>`;
+    const ls = linksByMat[m.id] || [];
+    const meta = `<div class="det-meta">${esc(SEC[m.section].name)}${m.practice ? ' · ' + esc(PR[m.practice].name) : ''} · ${esc(m.type)}, доказательность ${esc(m.evidence)}${ls.length ? `<div class="chips">${ls.map(l => ptl(l.item)).join('')}</div>` : ''}</div>`;
+    return `<tr class="det"><td class="sid"></td><td colspan="5"><div class="det-in">${meta}${m.summary ? `<div class="ms">${esc(m.summary)}</div>` : ''}<div class="mm">${esc(R.desc_origin[m.desc_origin])}${m.radar_dates.length ? ` В радаре: ${m.radar_dates.map(fmtShort).join(', ')}.` : ''}${m.pub_date ? ` Дата публикации: ${fmtDate(m.pub_date)}.` : ''}</div>${m.numbers.length ? `<div class="num"><b>Цифры:</b> ${esc(m.numbers.join('; '))}</div>` : ''}${m.takeaway ? `<div class="tk">${esc(m.takeaway)}</div>` : ''}<div class="mm src"><a href="${esc(m.url)}" target="_blank" rel="noopener noreferrer">Открыть источник<i class="ext" aria-hidden="true"></i></a> · <a href="${link(['m', String(m.num)])}">постоянная ссылка</a></div></div></td></tr>`;
   }
-  function tableHTML(list, state) {
+  function sortedList(list, state) {
     const sorted = list.slice();
     if (state.sort === 'date') sorted.sort((a, b) => (sortDate(b) || '').localeCompare(sortDate(a) || '') || a.num - b.num);
     else if (state.sort === 'num-desc') sorted.sort((a, b) => b.num - a.num);
+    return sorted;
+  }
+  function tableHTML(list, state) {
+    const sorted = sortedList(list, state);
+    state.start = state.start || 0;
     if (state.open) { const at = sorted.findIndex(m => m.id === state.open); if (at >= state.page * 50) state.page = Math.floor(at / 50) + 1; }
-    const shown = sorted.slice(0, state.page * 50);
+    const shown = sorted.slice(state.start, state.page * 50);
     const rows = shown.map(m => rowHTML(m, state.open === m.id) + (state.open === m.id ? detHTML(m) : '')).join('') || '<tr class="empty-row"><td colspan="6">Ничего не нашлось. Измените поиск или снимите фильтры.</td></tr>';
-    return `<table class="tbl"><thead><tr><th>№</th><th>Материал</th><th>Раздел атласа</th><th>Сценарий</th><th>Доказательность</th><th>Дата</th></tr></thead><tbody id="rows">${rows}</tbody></table>${shown.length < sorted.length ? `<div class="more"><button type="button" class="btn" data-more>Показать ещё ${Math.min(50, sorted.length - shown.length)} из ${sorted.length - shown.length}</button></div>` : ''}`;
+    const prev = state.start ? `<div class="more"><button type="button" class="btn" data-prev>Показать предыдущие ${Math.min(50, state.start)}</button></div>` : '';
+    return `${prev}<table class="tbl"><thead><tr><th>№</th><th>Материал</th><th>Раздел атласа</th><th>Сценарий</th><th>Доказательность</th><th>Дата</th></tr></thead><tbody id="rows">${rows}</tbody></table>${shown.length < sorted.length ? `<div class="more"><button type="button" class="btn" data-more>Показать ещё ${Math.min(50, sorted.length - shown.length)} из ${sorted.length - shown.length}</button></div>` : ''}`;
   }
   function bindTable(container, list, state, rerender) {
+    const focusRow = i => { const b = container.querySelectorAll('#rows tr.row .rowbtn')[i]; if (b) b.focus(); };
     container.addEventListener('click', e => {
-      if (e.target.closest('[data-more]')) { state.page++; rerender(); return; }
+      /* «Показать ещё»: фокус — на первую из новых строк, а не в начало страницы. */
+      if (e.target.closest('[data-more]')) { const before = state.page * 50 - state.start; state.page++; rerender(); focusRow(before); return; }
+      if (e.target.closest('[data-prev]')) { const added = Math.min(50, state.start); state.start -= added; rerender(); focusRow(added); return; }
       if (e.target.closest('a')) return;
       const tr = e.target.closest('tr.row'); if (!tr) return;
       const viaButton = !!e.target.closest('.rowbtn');
@@ -288,16 +319,38 @@
     /* Клавиатура: кнопка с номером раскрывает строку сама (Enter и пробел у кнопки работают по умолчанию). */
     container.addEventListener('keydown', e => { if (e.key === 'Escape' && state.open) { const k = state.open; state.open = null; rerender(); const b = container.querySelector(`tr.row[data-k="${k}"] .rowbtn`); if (b) b.focus(); } });
   }
+  /* Карточка сценария на матрице: видимая (лист или список), в центр экрана и в фокус. */
+  function focusCard(key) {
+    const sel = `a[href$="/scenario/${key}/"]`;
+    const el = [...app.querySelectorAll(`.sc${sel}, .nc${sel}, .loss${sel}`)].find(x => x.offsetParent);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: behavior() });
+    el.focus({ preventScroll: true });
+  }
+  async function closePassport(key) {
+    if (history.state && history.state.fromMatrix) { history.back(); return; }
+    await nav(BASE, false);
+    focusCard(key);
+  }
   function viewIndex(q, openNum) {
     setNav('index');
-    const state = idx; state.page = 1; state.sort = q.sort || 'num'; state.open = openNum ? MN.get(openNum).id : null;
-    const list = D.materials.filter(m => matchMat(m, q));
+    const state = idx; state.page = 1; state.start = 0; state.sort = q.sort || 'num'; state.open = openNum ? MN.get(openNum).id : null;
+    let list = D.materials.filter(m => matchMat(m, q));
+    if (openNum) {
+      /* Постоянная ссылка показывает страницу с этим материалом, а не все строки до него. */
+      const at = sortedList(list, state).findIndex(m => m.id === state.open);
+      state.page = Math.floor(at / 50) + 1; state.start = (state.page - 1) * 50;
+    }
+    const words = norm(q.q || '').split(/\s+/).filter(Boolean);
+    const hits = words.length ? [...IT.values()].filter(i => i.status !== 'merged' && i.status !== 'retired' && words.every(w => norm(i.title + ' ' + i.short).includes(w))) : [];
+    const qinput = document.querySelector('#qform input'); if (qinput) qinput.value = q.q || '';
     const opt = (v, t, cur) => `<option value="${esc(v)}"${cur === v ? ' selected' : ''}>${esc(t)}</option>`;
     const item = q.item && IT.get(q.item);
     app.innerHTML = `<div class="col"><p class="kicker">Указатель материалов</p><h1 class="title" style="font-size:36px">Все ${pl(D.materials.length, 'материал', 'материала', 'материалов')}, из которых собран атлас</h1>
       <p class="lead">Нажмите на строку — откроется суть, на сценарий — его паспорт. Фильтры и поиск сохраняются в адресе страницы, ссылкой можно делиться.</p></div>
       <div class="layout col">${drawerBtn}${treeHTML({ sec: q.sec, pr: q.pr, cor: q.cor, item: q.item, all: !q.sec && !q.pr && !q.cor && !q.item })}<div>
       ${item ? `<div class="chips" style="margin-top:8px"><span class="chip on">${mark(item.signal, 13)} материалы сценария «${esc(item.short)}» <a href="${link(['index'], { ...q, item: '' })}" aria-label="снять фильтр по сценарию">×</a></span></div>` : ''}
+      ${q.q ? `<div class="chips" style="margin-top:8px"><span class="chip on">поиск: «${esc(q.q)}» <a href="${link(['index'], { ...q, q: '' })}" aria-label="снять поиск">×</a></span>${hits.map(i => `<a class="chip" href="${link(['scenario', i.key])}">${mark(i.signal, 13)} сценарий «${esc(i.short)}»</a>`).join('')}</div>` : ''}
       <div class="chips" id="chips" style="margin-top:12px"><a class="chip${!q.sec ? ' on' : ''}" href="${link(['index'], { ...q, sec: '', pr: '' })}">Все разделы <em>${D.materials.length}</em></a>${R.sections.map(s => `<a class="chip${q.sec === s.key ? ' on' : ''}" href="${link(['index'], { ...q, sec: s.key, pr: '' })}">${esc(s.short)} <em>${secCount(s.key)}</em></a>`).join('')}</div>
       <form class="filters" id="filters">
         <select name="cor" aria-label="Вид проектной деятельности">${opt('', 'Все виды деятельности', q.cor)}${R.corridors.map(c => opt(c.key, `${c.key} · ${c.name} — ${corridorMats(c.key)}`, q.cor)).join('')}${opt('out', `Соседние территории — ${neighborMats()}`, q.cor)}${opt('none', `Без сценария — ${D.materials.length - linkedMats()}`, q.cor)}</select>
@@ -310,10 +363,25 @@
         <a class="btn" href="${link(['index'])}">Сбросить</a><span class="count" id="count"></span>
       </form><div id="table"></div></div></div>`;
     const tbl = app.querySelector('#table'), cnt = app.querySelector('#count');
-    const rerender = () => { tbl.innerHTML = tableHTML(list, state); cnt.textContent = `Показано: ${Math.min(list.length, state.page * 50)} из ${list.length}`; };
-    rerender(); bindTable(tbl, list, state, rerender); bindDrawer();
-    app.querySelector('#filters').addEventListener('change', e => { const f = new FormData(e.currentTarget); const nq = { ...q }; ['cor', 'pr', 'mon', 'ev', 'ty', 'sort', 'new'].forEach(k => nq[k] = f.get(k) || ''); nav(link(['index'], nq), false); });
-    if (openNum) setTimeout(() => { const r = tbl.querySelector(`tr.row[data-k="${state.open}"]`); if (r) r.scrollIntoView({ block: 'center' }); }, 50);
+    const rerender = () => { tbl.innerHTML = tableHTML(list, state); cnt.textContent = `Показано: ${Math.min(list.length, state.page * 50) - state.start} из ${list.length}`; };
+    rerender(); bindTable(tbl, () => list, state, rerender); bindDrawer();
+    /* Фильтры меняют только таблицу и адрес (без новой записи истории): фокус остаётся в выбранном поле. */
+    app.querySelector('#filters').addEventListener('change', e => {
+      const f = new FormData(e.currentTarget); const nq = { ...q };
+      ['cor', 'pr', 'mon', 'ev', 'ty', 'sort', 'new'].forEach(k => nq[k] = f.get(k) || '');
+      q = nq; state.page = 1; state.start = 0; state.open = null; state.sort = q.sort || 'num';
+      list = D.materials.filter(m => matchMat(m, q));
+      history.replaceState({ ...(history.state || {}) }, '', link(['index'], q));
+      rerender();
+    });
+    if (openNum) {
+      /* Прокрутка — после раскладки и шрифтов, иначе на телефоне строка уезжает. */
+      const go = () => requestAnimationFrame(() => requestAnimationFrame(() => {
+        const r = tbl.querySelector(`tr.row[data-k="${state.open}"]`);
+        if (r) { r.scrollIntoView({ block: 'center' }); const b = r.querySelector('.rowbtn'); if (b) b.focus({ preventScroll: true }); }
+      }));
+      (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(go);
+    }
   }
 
   /* ---------- разделы ---------- */
@@ -454,6 +522,12 @@
     const { parts, q } = parseHash();
     const p0 = parts[0] || '';
     if (NEEDS_MATERIALS.has(p0)) await loadMaterials();
+    /* 404-страница сервера и адрес снимка не той версии не должны выглядеть как настоящий атлас. */
+    if (HTML.dataset.notfound || (BASE !== '/' && BASE !== `/v/${D.version.id}/`)) { setTitle('Страницы нет'); notFound(); return; }
+    const it = p0 === 'scenario' ? IT.get(parts[1]) : null, mm = p0 === 'm' ? MN.get(Number(parts[1])) : null;
+    const sec = p0 === 'section' ? (parts[1] === 'practice' ? PR[parts[2]] : SEC[parts[1]]) : null;
+    setTitle({ '': '', scenario: it && it.title, index: 'Указатель материалов', m: mm && `№ ${mm.num}. ${mm.title}`, sections: 'Разделы',
+      section: sec && sec.name, versions: parts[1] ? `Версия ${parts[1]}` : 'Версии', method: 'О методике' }[p0] ?? 'Страницы нет');
     if (!p0) viewMatrix(null);
     else if (p0 === 'scenario') { const it = IT.get(parts[1]); if (!it) notFound(); else if (it.status === 'merged' || it.status === 'retired') retiredView(it); else viewMatrix(parts[1]); }
     else if (p0 === 'index') viewIndex(q, null);
@@ -475,9 +549,17 @@
     const url = new URL(a.href, location.href);
     if (url.origin !== location.origin || !url.pathname.startsWith(BASE) || url.pathname.startsWith('/v/') !== BASE.startsWith('/v/')) return;
     e.preventDefault();
-    nav(url.pathname + url.search, true);
+    const here = parseHash().parts[0] || '';
+    const toScenario = url.pathname.slice(BASE.length).startsWith('scenario/');
+    nav(url.pathname + url.search, true, toScenario && (here === '' || here === 'scenario') ? { fromMatrix: true } : null);
   });
-  window.addEventListener('popstate', () => route(false));
+  /* Прокрутку при «Назад/Вперёд» восстанавливает сайт сам, после отрисовки: браузерное восстановление срабатывает раньше. */
+  try { history.scrollRestoration = 'manual'; } catch (e) { }
+  window.addEventListener('popstate', async e => {
+    await route(false);
+    const y = e.state && e.state.y;
+    if (y != null) requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'instant' })));
+  });
   /* Шапка прячется при прокрутке вниз и выплывает при прокрутке вверх; при фокусе с клавиатуры видна всегда. */
   const top = document.querySelector('.top');
   let lastY = window.scrollY, ticking = false;
@@ -493,22 +575,23 @@
   }, { passive: true });
   top.addEventListener('focusin', () => top.classList.remove('hide'));
   /* Знак атласа: на главной — быстро наверх, с других страниц — на главную, сразу наверху. */
-  const reduced = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   document.querySelector('.top .brand').addEventListener('click', e => {
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
     e.stopPropagation();
     if (parseHash().parts.length) nav(BASE, true);
-    else { history.replaceState(null, '', BASE); window.scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' }); }
+    else { history.replaceState(null, '', BASE); window.scrollTo({ top: 0, behavior: behavior() }); }
     top.classList.remove('hide');
   });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && parseHash().parts[0] === 'scenario' && !(e.target.closest && e.target.closest('input,select,textarea'))) nav(BASE, false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && parseHash().parts[0] === 'scenario' && !document.querySelector('.rail.open') && !(e.target.closest && e.target.closest('input,select,textarea'))) closePassport(parseHash().parts[1]); });
   document.getElementById('qform').addEventListener('submit', e => {
     e.preventDefault();
-    const words = norm(e.target.q.value.trim()).split(/\s+/).filter(Boolean);
-    const hits = words.length ? D.items.filter(i => { const s = norm(i.title + ' ' + i.short); return words.every(w => s.includes(w)); }) : [];
-    nav(hits.length === 1 ? link(['scenario', hits[0].key]) : link(['index'], { q: e.target.q.value.trim() }), true);
+    nav(link(['index'], { q: e.target.q.value.trim() }), true);
   });
+  const themeBtn = document.getElementById('theme');
+  const themeLabel = () => { const light = document.documentElement.getAttribute('data-theme') === 'light'; themeBtn.setAttribute('aria-label', light ? 'Включить тёмную тему' : 'Включить светлую тему'); themeBtn.setAttribute('aria-pressed', light ? 'false' : 'true'); };
+  themeLabel();
+  themeBtn.addEventListener('click', () => setTimeout(themeLabel, 0));
   document.getElementById('theme').addEventListener('click', () => { const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'; const next = cur === 'light' ? 'dark' : 'light'; document.documentElement.setAttribute('data-theme', next); try { localStorage.setItem('atlas-theme', next); } catch (e) { } });
   if (BASE !== '/') {
     const bar = document.createElement('div');

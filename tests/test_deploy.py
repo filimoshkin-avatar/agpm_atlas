@@ -35,3 +35,10 @@ def test_publish_key_can_only_preview_and_publish():
     remote = (DEPLOY / "remote.sh").read_text(encoding="utf-8")
     commands = re.findall(r"^\s+([a-z*]+)\)", remote, re.M)
     assert commands == ["preview", "publish", "*"]
+
+
+def test_no_inline_handlers_under_csp():
+    """CSP запрещает встроенные обработчики: onchange/onclick в шаблонах молча не работают."""
+    for path in [*(ROOT / "site").glob("*.j2"), *(ROOT / "site" / "editor").glob("*.j2")]:
+        text = path.read_text(encoding="utf-8")
+        assert not re.search(r"\son[a-z]+=", text), path.name

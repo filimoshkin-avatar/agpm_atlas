@@ -1,7 +1,7 @@
 {% extends "cabinet.html.j2" %}{% block title %}Сценарий{% endblock %}{% block heading %}{{ item.title }}{% endblock %}
 {% block content %}
-<form class="toolbar" method="get" action="{{ prefix }}/scenario"><select name="key" aria-label="Сценарий" onchange="this.form.submit()">{% for i in items %}<option value="{{ i.key }}"{{ ' selected' if i.key == item.key }}>{% if i.kind == 'scenario' %}{{ i.corridor }}·{{ i.level }}{% elif i.kind == 'neighbor' %}Соседи·{{ i.level }}{% else %}IV·3{% endif %} · {{ i.short }}</option>{% endfor %}</select>
-<noscript><button class="btn" type="submit">Открыть</button></noscript><a class="btn" href="/scenario/{{ item.key }}/" target="_blank" rel="noopener">На сайте</a></form>
+<form class="toolbar" method="get" action="{{ prefix }}/scenario"><select name="key" aria-label="Сценарий" data-autosubmit>{% for i in items %}<option value="{{ i.key }}"{{ ' selected' if i.key == item.key }}>{% if i.kind == 'scenario' %}{{ i.corridor }}·{{ i.level }}{% elif i.kind == 'neighbor' %}Соседи·{{ i.level }}{% else %}IV·3{% endif %} · {{ i.short }}</option>{% endfor %}</select>
+<button class="btn" type="submit">Открыть</button><a class="btn" href="/scenario/{{ item.key }}/" target="_blank" rel="noopener">На сайте</a></form>
 {% set pinned = item.field_meta %}
 {% if item.kind != 'loss' %}<div class="panel"><h3>Сигнал: {{ signals[item.signal] }}{% if item.signal_origin == 'editor' %} · задан редактором: {{ item.signal_reason }}{% else %} · по правилу{% endif %}</h3>
 <form method="post" action="{{ prefix }}/scenario/{{ item.key }}/signal" class="toolbar"><input type="hidden" name="csrf" value="{{ user.csrf }}">
@@ -21,10 +21,10 @@
 <select name="corridor" aria-label="Коридор">{% for c in ['I', 'II', 'III', 'IV'] %}<option{{ ' selected' if c == item.corridor }}>{{ c }}</option>{% endfor %}</select>
 <select name="level" aria-label="Уровень">{% for lv in [1, 2, 3, 4] %}<option{{ ' selected' if lv == item.level }}>{{ lv }}</option>{% endfor %}</select>
 <input name="sub_area" value="{{ item.sub_area }}" placeholder="подобласть" aria-label="Подобласть"><input name="reason" placeholder="причина" required aria-label="Причина"><button class="btn" type="submit">Перенести в клетку</button></form>{% endif %}
-<form method="post" action="{{ prefix }}/scenario/{{ item.key }}/merge" class="toolbar"><input type="hidden" name="csrf" value="{{ user.csrf }}">
+<form method="post" action="{{ prefix }}/scenario/{{ item.key }}/merge" class="toolbar" data-confirm="Объединить сценарии? Связи перейдут к наследнику."><input type="hidden" name="csrf" value="{{ user.csrf }}">
 <select name="into" aria-label="С каким сценарием">{% for i in items if i.key != item.key and i.kind == item.kind %}<option value="{{ i.key }}">{{ i.short }}</option>{% endfor %}</select>
 <input name="reason" placeholder="причина" required aria-label="Причина"><button class="btn" type="submit">Объединить</button></form>
-<form method="post" action="{{ prefix }}/scenario/{{ item.key }}/retire" class="toolbar"><input type="hidden" name="csrf" value="{{ user.csrf }}"><input name="reason" placeholder="причина" required aria-label="Причина"><button class="btn danger" type="submit">Снять с матрицы</button></form></div>{% endif %}
+<form method="post" action="{{ prefix }}/scenario/{{ item.key }}/retire" class="toolbar" data-confirm="Снять сценарий с матрицы? Его связи будут сняты."><input type="hidden" name="csrf" value="{{ user.csrf }}"><input name="reason" placeholder="причина" required aria-label="Причина"><button class="btn danger" type="submit">Снять с матрицы</button></form></div>{% endif %}
 <div class="panel"><h3>Материалы · {{ links | length }}, для сигнала учитываются {{ links | selectattr('counts') | list | length }}</h3>
 <table class="tbl"><tr><th>№</th><th>Материал</th><th>Роль</th><th>Для сигнала</th></tr>{% for l in links %}<tr><td class="sid">№ {{ l.num }}</td><td><a href="{{ prefix }}/material?id={{ l.material_id }}">{{ l.title }}</a><div class="sub">{{ l.outlet }} · {{ l.type }}</div></td><td>{{ l.role }}</td><td>{% if l.counts %}<span class="tag ok">да</span>{% else %}<span class="note">{{ l.basis }}</span>{% endif %}</td></tr>{% endfor %}</table></div>
 <div class="panel"><h3>История сигнала</h3><ul class="hist">{% for h in history %}<li><span class="d">{{ h.version }}</span> <span>{{ signals[h.signal] }} — {{ h.note }}</span></li>{% endfor %}</ul></div>

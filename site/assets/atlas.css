@@ -435,3 +435,23 @@ footer .links a:hover { color:var(--tx); text-decoration:underline; }
 /* Светлая тема: мелкие метки без подкрашенной подложки — так цвета палитры дают контраст не ниже 4,5:1. */
 :root[data-theme="light"] .role.r-confirms, :root[data-theme="light"] .role.r-claims, :root[data-theme="light"] .role.r-refutes,
 :root[data-theme="light"] .tag.ok, :root[data-theme="light"] .tag.demo { background:none; }
+/* Сборка сайта, правки по проверке юзабилити. */
+.det-meta { display:none; font-size:13px; color:var(--tx2); margin-bottom:8px; }
+.det-meta .chips { margin-top:6px; }
+.rail-close { display:none; }
+.scrollhint { display:none; margin-top:12px; }
+@media (max-width:1059px) {
+  .viewsw { display:flex; }
+  .sheetwrap.hide { display:none; }
+  .sheet-list.show { display:block; }
+}
+@media (min-width:641px) and (max-width:1059px) { .scrollhint { display:block; } }
+@media (max-width:900px) {
+  .det-meta { display:block; }
+  .rail { z-index:50; }
+  .scrim { z-index:45; }
+  .rail-close { display:inline-flex; margin-bottom:12px; }
+  body.drawer-open { overflow:hidden; }
+}
+.cab select { max-width:100%; }
+.cab textarea[name="summary"], .cab textarea[name="why"] { min-height:160px; }
