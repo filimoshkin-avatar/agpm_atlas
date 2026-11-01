@@ -30,6 +30,7 @@
     const list = pack.materials;
     D.materials = list; M = new Map(list.map(m => [m.id, m])); MN = new Map(list.map(m => [m.num, m]));
     D.links = pack.links; indexLinks();
+    if (pack.versions) D.versions = pack.versions;
   }));
   /* Объединённые и снятые сценарии не показываются на матрице, но их адрес ведёт на объяснение. */
   const IT = new Map(D.items.map(i => [i.key, i]));
@@ -522,7 +523,7 @@
   function notFound() { app.innerHTML = `<div class="col"><p class="kicker">Страницы нет</p><h1 class="title" style="font-size:34px">Такого адреса в атласе нет</h1><p class="lead">Проверьте ссылку или вернитесь к матрице.</p><p><a class="btn" href="${BASE}">К матрице</a></p></div>`; }
 
   /* ---------- маршрутизация ---------- */
-  const NEEDS_MATERIALS = new Set(['scenario', 'index', 'm', 'section']);
+  const NEEDS_MATERIALS = new Set(['scenario', 'index', 'm', 'section', 'versions']);
   async function route(scroll) {
     const { parts, q } = parseHash();
     const p0 = parts[0] || '';

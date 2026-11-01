@@ -143,8 +143,11 @@ def build(snap: dict[str, Any], out: Path) -> dict[str, Any]:
     data_dir = out / "data"
     data_dir.mkdir()
     # Главная грузит только ядро; материалы и связи — отдельным файлом, когда нужны (паспорт, указатель, разделы).
+    # Изменения версий целиком нужны только страницам «Что изменилось» — в ядре остаются итоги и смены сигналов.
+    light = lambda ch: {k: ch[k] for k in ("summary", "totals", "signals") if k in ch}
     core = {k: v for k, v in snap.items() if k not in ("materials", "links")}
-    files = {"core": core, "materials": {"materials": snap["materials"], "links": snap["links"]}}
+    core["versions"] = [{**v, **({"changes": light(v["changes"])} if v.get("changes") else {})} for v in snap["versions"]]
+    files = {"core": core, "materials": {"materials": snap["materials"], "links": snap["links"], "versions": snap["versions"]}}
     data_names: dict[str, str] = {}
     for name, payload in files.items():
         raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
