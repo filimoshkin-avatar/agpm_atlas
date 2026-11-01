@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Недельный прогон атласа на управляющем сервере (OpenClaw cron, пн 09:00 МСК).
+# Недельный прогон атласа на управляющем сервере (crontab root: «0 6 * * 1», пн 09:00 МСК).
 #  1) туннель к базе на Local Ru;
 #  2) забор и разбор моделью; выгрузка радара недоступна — повтор каждый час до 18:00, затем тревога;
 #  3) публикация на Local Ru по ключу с принудительной командой;
@@ -31,13 +31,13 @@ PGPASSWORD="$(cat /root/.config/atlas/db.pass)" pg_dump -h 127.0.0.1 -p "$PORT" 
   || fail "копия базы" "pg_dump через туннель не удался"
 
 while true; do
-  .venv/bin/python -m atlas.cli week --end "$END" >"var/week-$END.json" 2>>"$LOG"
+  .venv/bin/python -m atlas.cli week --end "$END" --require-issue >"var/week-$END.json" 2>>"$LOG"
   rc=$?
   [ $rc -eq 0 ] && break
   if [ $rc -eq 75 ] && [ "$(TZ=Europe/Moscow date +%H)" -lt 18 ]; then
-    echo "$(date -Is) выгрузка радара недоступна, повтор через час" >>"$LOG"; sleep 3600; continue
+    echo "$(date -Is) выгрузка радара недоступна или выпуска за $END ещё нет, повтор через час" >>"$LOG"; sleep 3600; continue
   fi
-  [ $rc -eq 75 ] && fail "забор" "выгрузка радара недоступна до 18:00"
+  [ $rc -eq 75 ] && fail "забор" "до 18:00 выгрузка радара недоступна или выпуска за $END нет"
   fail "прогон" "код $rc, подробности в $LOG"
 done
 

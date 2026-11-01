@@ -81,12 +81,23 @@ def cmd_build_site(args: argparse.Namespace) -> int:
 
 def cmd_week(args: argparse.Namespace) -> int:
     """Недельный прогон до даты среза включительно; версия ждёт проверки."""
-    from atlas.radar import RadarUnavailable
+    from atlas.radar import API, RadarUnavailable, http_get
+    end = date.fromisoformat(args.end)
+    if args.require_issue:
+        # Прогон по расписанию ждёт выпуск дня среза: радар иногда выходит позже 09:00.
+        try:
+            latest = http_get(f"{API}/latest").get("issueDate", "")
+        except RadarUnavailable as exc:
+            latest = ""
+            print(json.dumps({"error": "radar_unavailable", "detail": str(exc)}, ensure_ascii=False))
+        if latest < end.isoformat():
+            print(json.dumps({"error": "issue_not_ready", "latest": latest, "end": end.isoformat()}, ensure_ascii=False))
+            return 75
     model = Model(args.model) if args.model else Model()
     with db.connect() as conn:
         db.migrate(conn)
         try:
-            report = pipeline.run_week(conn, end=date.fromisoformat(args.end), model=model)
+            report = pipeline.run_week(conn, end=end, model=model)
         except RadarUnavailable as exc:
             print(json.dumps({"error": "radar_unavailable", "detail": str(exc)}, ensure_ascii=False))
             return 75  # EX_TEMPFAIL: недельный запуск повторит через час
@@ -192,6 +203,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("week", help="недельный прогон: забор, разбор моделью, пересчёт, версия")
     p.add_argument("--end", required=True, help="дата среза ГГГГ-ММ-ДД")
     p.add_argument("--model", help="модель, по умолчанию ATLAS_MODEL или openai/gpt-6.1-sol")
+    p.add_argument("--require-issue", action="store_true", help="ждать выпуск радара за дату среза (код 75, если его ещё нет)")
     p.set_defaults(func=cmd_week)
     p = sub.add_parser("edit-link", help="правка связи редактором: журнал и закрепление")
     p.add_argument("--num", type=int, required=True)
