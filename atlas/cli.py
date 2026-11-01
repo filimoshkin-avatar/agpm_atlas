@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from atlas import PROTOTYPE, REFERENCE_JSON, ROOT, db, importer, reconcile, snapshot
+from atlas import PROTOTYPE, REFERENCE_JSON, ROOT, db, importer, reconcile, site, snapshot
 
 
 def cmd_migrate(args: argparse.Namespace) -> int:
@@ -61,6 +61,21 @@ def cmd_first_version(args: argparse.Namespace) -> int:
     return 1 if errors else 0
 
 
+def cmd_build_site(args: argparse.Namespace) -> int:
+    with db.connect() as conn:
+        row = conn.execute("SELECT snapshot, snapshot_sha256 FROM versions WHERE id = %s", (args.version,)).fetchone()
+    if row is None:
+        print(json.dumps({"error": f"версии {args.version} нет"}, ensure_ascii=False))
+        return 1
+    if snapshot.sha256(row["snapshot"]) != row["snapshot_sha256"]:
+        print(json.dumps({"error": "снимок не совпадает со своим sha256"}, ensure_ascii=False))
+        return 1
+    out = args.out or ROOT / "var" / "site" / args.version
+    manifest = site.build(row["snapshot"], out)
+    print(json.dumps({"version": args.version, "out": str(out), "pages": manifest["pages"], "files": len(manifest["files"])}, ensure_ascii=False))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="atlas")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -70,6 +85,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--unmatched", type=Path, help="куда записать список несопоставленных материалов")
     p.set_defaults(func=cmd_import)
     sub.add_parser("first-version", help="собрать и сверить версию 2026-10-09").set_defaults(func=cmd_first_version)
+    p = sub.add_parser("build-site", help="собрать сайт версии из её снимка")
+    p.add_argument("--version", default="2026-10-09")
+    p.add_argument("--out", type=Path)
+    p.set_defaults(func=cmd_build_site)
     args = parser.parse_args(argv)
     return args.func(args)
 

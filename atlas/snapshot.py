@@ -109,6 +109,11 @@ def computed(data: dict[str, Any]) -> dict[str, Any]:
             for kind in ("scenario", "neighbor")
         },
         "empty_cells": [list(cell) for cell in c.empty_cells()],
+        "material_total": len(data["materials"]),
+        "desc_origin": {
+            key: sum(1 for m in data["materials"] if m["desc_origin"] == key)
+            for key in ("verified", "radar", "title", "none")
+        },
         "conditions": rules.conditions(data),
     }
 

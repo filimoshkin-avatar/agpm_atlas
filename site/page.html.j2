@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru" data-root="{{ root }}" data-core="{{ core }}" data-materials="{{ materials }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d14" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f7fa" media="(prefers-color-scheme: light)">
+<title>{{ title }}</title>
+<meta name="description" content="{{ description }}">
+{% if canonical %}<link rel="canonical" href="{{ canonical }}">
+<meta property="og:url" content="{{ canonical }}">
+{% endif %}<meta property="og:type" content="website">
+<meta property="og:site_name" content="Атлас AgPM">
+<meta property="og:title" content="{{ title }}">
+<meta property="og:description" content="{{ description }}">
+<meta property="og:locale" content="ru_RU">
+{% if noindex %}<meta name="robots" content="noindex">
+{% endif %}<link rel="icon" href="{{ root }}assets/logo/favicon.svg" type="image/svg+xml">
+<script>
+/* Тема применяется до первой отрисовки: выбор из хранилища, иначе настройка системы. Чтение обёрнуто в обработку ошибок. */
+(function(){var t=null;try{t=localStorage.getItem('atlas-theme');}catch(e){}
+if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}
+document.documentElement.setAttribute('data-theme',t);})();
+</script>
+<link rel="stylesheet" href="{{ root }}assets/{{ fonts_css }}">
+<link rel="stylesheet" href="{{ root }}assets/{{ atlas_css }}">
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="brand" href="{{ root }}" aria-label="Атлас агентного управления проектами — на главную матрицу">
+      <svg viewBox="0 0 40 40" aria-hidden="true" fill="none"><circle cx="20" cy="20" r="16.5" stroke="currentColor" stroke-width="2.4"/><ellipse cx="20" cy="20" rx="7" ry="16.5" stroke="currentColor" stroke-width="2.4"/><path d="M3.5 20h33" stroke="currentColor" stroke-width="2.4"/><circle cx="27" cy="12" r="4.1" fill="var(--logo-dot,currentColor)"/></svg>
+      <span class="w"><b>Атлас AgPM</b><small>агентного управления проектами</small></span>
+    </a>
+    <nav class="nav" aria-label="Разделы сайта">
+      <a href="{{ root }}" data-nav="matrix">Матрица</a>
+      <a href="{{ root }}index/" data-nav="index">Указатель</a>
+      <a href="{{ root }}sections/" data-nav="sections">Разделы</a>
+      <a href="{{ root }}method/" data-nav="method">О методике</a>
+    </nav>
+    <div class="right">
+      <form class="search" id="qform" role="search"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg><input name="q" type="search" placeholder="Поиск по атласу" aria-label="Поиск по атласу" autocomplete="off"></form>
+      <button type="button" class="theme" id="theme" aria-label="Переключить тему">
+        <svg class="moon i" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 9.8A6 6 0 0 1 6.2 2.5a6 6 0 1 0 7.3 7.3z"/></svg>
+        <svg class="sun i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"/></svg>
+      </button>
+      <div class="date"><b id="sliceDate">{{ slice_line }}</b><a class="radar" href="https://radar.agpm.space/" target="_blank" rel="noopener" title="AgPM Radar — radar.agpm.space"><img src="{{ root }}assets/img/radar.png" alt=""><span>По материалам AgPM Radar</span></a></div>
+    </div>
+  </header>
+  <div class="rule"></div>
+  <main id="app" aria-live="polite">
+    <noscript><div class="col"><h1 class="title" style="font-size:34px">{{ heading }}</h1><p class="lead">{{ description }}</p><p class="lead">Атлас показывает матрицу и указатель с включённым JavaScript.</p></div></noscript>
+  </main>
+  <footer class="col">
+    <p id="footnote"></p>
+    <div class="links">
+      <a href="https://radar.agpm.space/" target="_blank" rel="noopener">AgPM Radar</a>
+      <a href="{{ root }}method/">О методике</a>
+      <a href="{{ root }}versions/">Версии атласа</a>
+    </div>
+  </footer>
+</div>
+<script src="{{ root }}assets/{{ atlas_js }}"></script>
+</body>
+</html>
