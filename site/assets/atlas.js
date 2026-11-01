@@ -239,7 +239,7 @@
     if (q.mon && m.month !== q.mon) return false;
     if (q.ev && m.evidence !== q.ev) return false;
     if (q.ty && m.type !== q.ty) return false;
-    if (q.new && !NEW.has(m.id)) return false;
+    if (q.new && NEW.size && !NEW.has(m.id)) return false;
     const ls = linksByMat[m.id] || [];
     if (q.item && !ls.some(l => l.item === q.item)) return false;
     if (q.cor) {

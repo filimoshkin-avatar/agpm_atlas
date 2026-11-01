@@ -402,9 +402,15 @@ footer .links a:hover { color:var(--tx); text-decoration:underline; }
   .filters .count { margin-left:0; width:100%; }
 }
 @media print {
-  .top .right, .nav, .viewsw, .pp-close, .drawer-btn { display:none !important; }
+  .nav, .viewsw, .pp-close, .drawer-btn { display:none !important; }
   .sheetwrap { box-shadow:none; overflow:visible; }
   @page { size:A3 landscape; margin:12mm; }
+  /* Сборка сайта: лист целиком на один A3 в светлой палитре; в шапке остаются знак и дата среза. */
+  :root, :root[data-theme] { color-scheme:light; --bg:#f5f7fa; --deep:#eceff4; --card:#ffffff; --raised:#eceff4; --tx:#111827; --tx2:#4b5565; --mut:#626b7e; --line:rgba(17,24,39,.08); --line2:rgba(17,24,39,.14); --accent:#1d5fcc; --accent-soft:rgba(29,95,204,.10); --btn:#111827; --btn-tx:#ffffff; --ok:#15803d; --warn:#b45309; --bad:#dc2626; --ok-soft:rgba(21,128,61,.12); --warn-soft:rgba(180,83,9,.10); --bad-soft:rgba(220,38,38,.12); --mark-bg:#ffffff; --shadow:0 8px 24px rgba(17,24,39,.06); color-scheme:light; }
+  body { background:#fff !important; }
+  .top .search, .top .theme, .top .radar, main > header.col, .passport, .sheet-list, footer, .rule, .snapbar { display:none !important; }
+  .sheetwrap, .sheetwrap.force { display:block !important; zoom:.68; margin-top:8px !important; break-inside:avoid; }
+  .sheetwrap .sheet { min-width:0 !important; width:100% !important; }
 }
 
 /* Плашка снимка версии /v/ГГГГ-ММ-ДД/ — сборка сайта, не прототип. */
@@ -413,15 +419,7 @@ footer .links a:hover { color:var(--tx); text-decoration:underline; }
 /* Поля ввода в строках кабинета вне .field — тем же видом, что поля прототипа. */
 .cab .toolbar input:not([type=checkbox]):not([type=radio]) { background:var(--raised); border:1px solid var(--line2); border-radius:var(--r-ctl); color:var(--tx); font:inherit; padding:8px 12px; height:36px; }
 
-/* Сборка сайта: строка «с прошлой версии», флажок фильтра, печать главной на A3 альбомной. */
+/* Сборка сайта: строка «с прошлой версии», флажок фильтра. */
 .slice .since { display:block; width:100%; margin-top:4px; color:var(--tx2); font-size:14px; }
 .filters .chk { display:inline-flex; gap:8px; align-items:center; font-size:14px; color:var(--tx2); }
-@media print {
-  @page { size: A3 landscape; margin: 10mm; }
-  :root, :root[data-theme] { color-scheme: light; --bg:#f5f7fa; --deep:#eceff4; --card:#ffffff; --raised:#eceff4; --tx:#111827; --tx2:#4b5565; --mut:#626b7e; --line:rgba(17,24,39,.08); --line2:rgba(17,24,39,.14); --accent:#1d5fcc; --accent-soft:rgba(29,95,204,.10); --btn:#111827; --btn-tx:#ffffff; --ok:#15803d; --warn:#b45309; --bad:#dc2626; --ok-soft:rgba(21,128,61,.12); --warn-soft:rgba(180,83,9,.10); --bad-soft:rgba(220,38,38,.12); --mark-bg:#ffffff; --shadow:0 8px 24px rgba(17,24,39,.06); color-scheme:light; }
-  .top .nav, .top .search, .top .theme, .viewsw, .passport, footer .links, .sheet-list, .snapbar { display: none !important; }
-  .sheetwrap { overflow: visible !important; }
-  .sheetwrap .sheet { min-width: 0 !important; width: 100% !important; box-shadow: none !important; }
-  .sheetwrap, .sheetwrap.force { display: block !important; }
-  body { background: #fff !important; }
 }
