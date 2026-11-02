@@ -44,4 +44,8 @@ Rollback evidence on Local Ru: `/root/atlas-storage-cutover-20261102/`. Original
 
 ## Scope boundaries
 
-No migration of model execution, no full weekly run repeated on production during acceptance. Read-only runner `--check` proves DB tunnel, remote backup/logs and live axe-core without week/publish. Code and runtime copies on Local Ru are deployment artifacts; immutable site snapshots unchanged. No S3/offhost backup destination was authorized in this change; Local Ru-only backups cannot protect against total host loss.
+No migration of model execution, no full weekly run repeated on production during acceptance. Non-publishing runner `--check` proves DB tunnel, remote backup/logs and live axe-core without week/publish. It is NOT read-only: it creates a backup and run logs. Code and runtime copies on Local Ru are deployment artifacts; immutable site snapshots unchanged. No S3/offhost backup destination was authorized in this change; Local Ru-only backups cannot protect against total host loss.
+
+## Agent handoff
+
+Russian implementation handoff and operational cautions: [claude-handoff-2026-11-02.md](claude-handoff-2026-11-02.md). This document remains the source of truth for storage paths and retention.

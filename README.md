@@ -1,7 +1,7 @@
 # Атлас AgPM
 
 Еженедельный «Атлас агентного управления проектами» по материалам AgPM Radar,
-сайт — https://atlas.agpm.space/ (адрес ещё не заведён).
+сайт — https://atlas.agpm.space/.
 
 Сайт: https://atlas.agpm.space/ · кабинет: https://atlas.agpm.space/editor/
 
@@ -10,28 +10,37 @@
 Проверка этапа 3 — четыре недельных прогона подряд — идёт с 02.11.2026.
 Дежурному — `docs/Инструкция_дежурного_v1.md`.
 
-## Запуск
+## Действующая эксплуатация
 
-```
-uv sync                                    # зависимости в .venv
-psql -c "CREATE DATABASE atlas"            # база; адрес — ATLAS_DSN
-.venv/bin/python -m atlas.cli import --radar-dump var/radar-dump
-.venv/bin/python -m atlas.cli first-version   # версия 2026-10-09 со сверкой
-.venv/bin/python -m atlas.cli build-site      # сайт в var/site/2026-10-09/
-bash scripts/verify.sh                     # гейт
+Сбор, браузер и модель работают на srv2; база, сайт, кабинет, рабочий кэш,
+журналы и дампы — на Local Ru. Код — `/data/atlas` и GitHub.
+
+- [Передача изменений для Claude](docs/operations/claude-handoff-2026-11-02.md).
+- [Контракт хранения, сроки и откат](docs/operations/storage.md).
+- [Инструкция дежурного](docs/Инструкция_дежурного_v1.md).
+
+Проверка состояния на srv2, без запуска сбора:
+
+```sh
+systemctl status atlas-weekly.service --no-pager
+journalctl -u atlas-weekly.service -n 30 --no-pager
 ```
 
-Работа на проде (база и кабинет на Local Ru, конвейер с моделью — здесь):
+Недельный запуск выполняет root cron по понедельникам в 06:00 UTC через
+`atlas-weekly.service`. Ручной `systemctl start atlas-weekly.service` запускает
+**настоящий сбор с возможной публикацией**, это не проверка здоровья.
+Совместимый `scripts/weekly.sh [ГГГГ-ММ-ДД]` использует новый runner, но запуск
+через службу предпочтителен из-за лимитов ресурсов и временного tmpfs.
+`atlas.weekly --check` не собирает и не публикует выпуск, но создаёт дамп и журналы.
 
-```
-bash scripts/weekly.sh [ГГГГ-ММ-ДД]        # недельный прогон: туннель, копия базы, забор, модель,
-                                           # предпросмотр, доступность, публикация, картинка, Telegram
-bash scripts/deploy_code.sh                # выкладка кода на Local Ru (из чистого дерева)
-# после выкладки кода сайта — пересобрать папки версий на Local Ru:
-#   atlas.cli rebuild-site --version <id>  (для каждой версии)
-node tools/usability_check.cjs https://atlas.agpm.space/   # 16 сценариев юзабилити
-node tools/a11y_check.cjs https://atlas.agpm.space/        # axe-core, обе темы, 390 и 1440
-```
+Не создавать рабочую базу `atlas` на srv2 и не восстанавливать операционный
+каталог `var`: это больше не схема эксплуатации. Тестовые базы — только `atlas_test_*`.
+Для разработки: `uv sync`, затем `bash scripts/verify.sh` в настроенном тестовом окружении.
+
+Выкладка кода приложения: `bash scripts/deploy_code.sh` из чистого дерева.
+После изменения шаблонов пересобрать папки версий на Local Ru
+(`atlas.cli rebuild-site --version <id>`). Это отдельная операция от установки
+storage-helper и systemd units; не заменять живой Caddy старым шаблоном.
 
 | Путь | Что это |
 | --- | --- |
@@ -52,9 +61,3 @@ node tools/a11y_check.cjs https://atlas.agpm.space/        # axe-core, обе т
 Живая версия задания: https://claude.ai/artifact/RHhwnCeUPjyuJFtD4aAdyV.
 При расхождении правила и приёмка — по заданию, вид — по прототипу, числа и
 тексты эталона — по `reference/`.
-
-## Operational storage (2026-11-02)
-
-Collection/model stay on srv2. Cache, run logs and dumps now use Local Ru; see
-`docs/operations/storage.md` for paths, retention, verification and rollback.
-The older path examples above describe initial setup, not live operational storage.
