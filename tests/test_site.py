@@ -85,3 +85,12 @@ def test_stylesheets_have_balanced_braces():
             depth += {"{": 1, "}": -1}.get(ch, 0)
             assert depth >= 0, f"{name}: лишняя «}}»"
         assert depth == 0, f"{name}: незакрытая «{{»"
+
+
+def test_home_description_has_no_slice_date_or_counts(built):
+    """Превью ссылки на главную мессенджеры хранят неделями: в нём не должно быть того, что устаревает."""
+    snap, out, manifest = built
+    html = (out / "index.html").read_text(encoding="utf-8")
+    og = re.search(r'property="og:description" content="([^"]*)"', html).group(1)
+    assert "Срез" not in og and not re.search(r"\d", og)
+    assert f'name="description" content="{og}"' in html

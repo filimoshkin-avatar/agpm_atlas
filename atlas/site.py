@@ -60,17 +60,15 @@ def pages(snap: dict[str, Any]) -> list[Page]:
     refs, c = snap["refs"], snap["computed"]
     total = c["material_total"]
     sig = refs["signals"]
-    legend = c["legend"]["scenario"]
     levels = {lv["n"]: lv for lv in refs["levels"]}
     corridors = {cor["key"]: cor for cor in refs["corridors"]}
     sections = {s["key"]: s for s in refs["sections"]}
     out = [Page(
         "", "Атлас агентного управления проектами", "Агенты в управлении проектами и смежными направлениями деятельности",
-        f"Срез на {_ru_date(snap['version']['slice'])}: "
-        f"{_pl(sum(1 for i in snap['items'] if i['kind'] == 'scenario'), 'сценарий', 'сценария', 'сценариев')} проектной работы, "
-        f"{_pl(sum(1 for i in snap['items'] if i['kind'] == 'neighbor'), 'соседняя территория', 'соседние территории', 'соседних территорий')}, "
-        f"{_pl(total, 'материал', 'материала', 'материалов')} AgPM Radar. "
-        f"Подтвердилось — {legend['confirmed']}, заявлено — {legend['claimed']}, не подтвердилось — {legend['refuted']}.",
+        # Постоянное: мессенджеры надолго запоминают превью ссылки, дата среза в нём устаревает за неделю.
+        "Где агенты уже работают в управлении проектами и смежных направлениях, а где пока только обещания. "
+        "Сценарии по видам проектной работы и уровням самостоятельности агента: у каждого — сигнал "
+        "и материалы AgPM Radar, на которых он держится. Обновляется каждую неделю.",
     )]
     for item in snap["items"]:
         n = c["item_materials"].get(item["key"], 0)
