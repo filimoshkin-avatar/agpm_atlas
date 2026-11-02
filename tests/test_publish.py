@@ -117,4 +117,4 @@ def test_og_image_source_is_png_1200x630():
     data = (site.SITE_SRC / "assets" / "img" / "og.png").read_bytes()
     assert data[:8] == b"\x89PNG\r\n\x1a\n"
     assert struct.unpack(">II", data[16:24]) == (1200, 630)  # размеры зашиты в og:image:width/height
-    assert len(data) <= 2_000_000
+    assert len(data) <= 500_000  # превью грузится у каждого получателя ссылки
