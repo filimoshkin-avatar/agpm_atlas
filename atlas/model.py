@@ -73,6 +73,7 @@ def parse_json(text: str) -> Any:
     return json.loads(text)
 
 
+# START_CHANGE_SUMMARY M-STORAGE: default production cache uses fail-closed remote storage; model/prompt key unchanged.
 class Model:
     def __init__(self, model: str = DEFAULT_MODEL, transport: Transport = openclaw_transport,
                  cache_dir: Path | None = CACHE_DIR) -> None:
@@ -80,6 +81,11 @@ class Model:
         self.transport = transport
         self.cache_dir = cache_dir
         self.usage = Usage()
+        self.remote = None
+        if cache_dir == CACHE_DIR and Path(os.environ.get("ATLAS_STORAGE_CONFIG", "/etc/atlas-storage/client.json")).exists():
+            from atlas.storage import Storage
+            self.remote = Storage()
+        self.lease = os.environ.get("ATLAS_STORAGE_TOKEN", "")
 
     def _cache_path(self, prompt_version: str, prompt: str) -> Path | None:
         if self.cache_dir is None:
@@ -89,7 +95,12 @@ class Model:
 
     def _call(self, prompt_version: str, prompt: str) -> str:
         path = self._cache_path(prompt_version, prompt)
-        if path and path.exists():
+        if self.remote and path:
+            cached = self.remote.call("cache_get", token=self.lease, key=path.stem)
+            if cached is not None:
+                self.usage.cached += 1
+                return cached["text"]
+        if not self.remote and path and path.exists():
             self.usage.cached += 1
             return json.loads(path.read_text(encoding="utf-8"))["text"]
         started = time.monotonic()
@@ -97,7 +108,10 @@ class Model:
         self.usage.calls += 1
         self.usage.seconds += time.monotonic() - started
         self.usage.tokens += int((len(prompt) + len(text)) / CHARS_PER_TOKEN)
-        if path:
+        if self.remote and path:
+            self.remote.call("cache_put", token=self.lease, key=path.stem,
+                             value={"model": self.model, "prompt_version": prompt_version, "text": text})
+        elif path:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps({"model": self.model, "prompt_version": prompt_version, "text": text},
                                        ensure_ascii=False), encoding="utf-8")

@@ -1,0 +1,25 @@
+# M-RUNNER: srv2 execution only; all persistent application output on Local Ru.
+[Unit]
+Description=Atlas weekly pipeline with Local Ru storage
+After=network-online.target
+Wants=network-online.target
+[Service]
+User=root
+Type=exec
+WorkingDirectory=/data/atlas
+ExecStart=/data/atlas/.venv/bin/python -m atlas.weekly
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=TMPDIR=/tmp
+Environment=ATLAS_STORAGE_CONFIG=/etc/atlas-storage/client.json
+RuntimeDirectory=atlas-weekly
+RuntimeDirectoryMode=0700
+TemporaryFileSystem=/tmp:size=192M,mode=1777
+MemoryMax=768M
+MemorySwapMax=256M
+CPUQuota=100%
+TasksMax=128
+RuntimeMaxSec=12h
+TimeoutStopSec=30
+KillMode=control-group
+UMask=0077
+Nice=10

@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily Atlas Local Ru backup and retention
+[Timer]
+OnCalendar=*-*-* 04:30:00 UTC
+Persistent=true
+Unit=atlas-storage-maintenance.service
+[Install]
+WantedBy=timers.target

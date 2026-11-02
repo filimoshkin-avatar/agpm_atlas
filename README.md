@@ -52,3 +52,9 @@ node tools/a11y_check.cjs https://atlas.agpm.space/        # axe-core, обе т
 Живая версия задания: https://claude.ai/artifact/RHhwnCeUPjyuJFtD4aAdyV.
 При расхождении правила и приёмка — по заданию, вид — по прототипу, числа и
 тексты эталона — по `reference/`.
+
+## Operational storage (2026-11-02)
+
+Collection/model stay on srv2. Cache, run logs and dumps now use Local Ru; see
+`docs/operations/storage.md` for paths, retention, verification and rollback.
+The older path examples above describe initial setup, not live operational storage.

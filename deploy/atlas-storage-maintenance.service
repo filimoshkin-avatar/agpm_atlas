@@ -1,0 +1,20 @@
+# M-BACKUP M-RETENTION: Local Ru; abort retention on backup failure.
+[Unit]
+Description=Atlas daily backup and safe retention
+After=postgresql.service
+[Service]
+Type=oneshot
+User=atlas
+Group=atlas
+ExecStart=/opt/atlas/venv/bin/python /opt/atlas-storage/storage_retention.py --backup --apply
+Environment=PYTHONDONTWRITEBYTECODE=1
+MemoryMax=256M
+MemorySwapMax=128M
+CPUQuota=30%
+TimeoutStartSec=15min
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/atlas/storage /var/backups/atlas
