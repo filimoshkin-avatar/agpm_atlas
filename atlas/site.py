@@ -180,8 +180,8 @@ def build(snap: dict[str, Any], out: Path) -> dict[str, Any]:
         og_image=f"{SITE_URL}/og.png",
     )
     (out / "404.html").write_text(not_found, encoding="utf-8")
-    # Картинка для соцсетей: стартовая — снимок матрицы; недельный прогон заменяет её снимком своей версии.
-    shutil.copyfile(SITE_SRC / "assets" / "img" / "og-default.png", out / "og.png")
+    # Картинка для соцсетей одна на весь сайт: файл из репозитория, прогоны её не трогают.
+    shutil.copyfile(SITE_SRC / "assets" / "img" / "og.png", out / "og.png")
     (out / "robots.txt").write_text(
         f"User-agent: *\nDisallow: /v/\nDisallow: /editor/\nSitemap: {SITE_URL}/sitemap.xml\n", encoding="utf-8"
     )

@@ -148,36 +148,11 @@ def _fresh(conn, version: str, root: Path) -> tuple[Path, dict[str, Any]]:
         return _build(conn, version, root)
     row = conn.execute("SELECT snapshot FROM versions WHERE id = %s", (version,)).fetchone()
     tmp, manifest = _build_aside(conn, version, row["snapshot"], root)
-    _keep_og(out, tmp)
     import time
     stale = root / "releases" / f".{version}.replaced-{int(time.time())}"
     out.rename(stale)
     tmp.rename(out)
     return out, manifest
-
-
-def _keep_og(old: Path, new: Path) -> None:
-    """Снимок матрицы, загруженный прогоном, переживает пересборку папки."""
-    og = old / "og.png"
-    if og.is_file() and og.read_bytes() != (new / "og.png").read_bytes():
-        import shutil
-        shutil.copyfile(og, new / "og.png")
-
-
-MAX_OG = 2_000_000
-
-
-def put_og(conn: psycopg.Connection, data: bytes, root: Path = SITE_ROOT) -> str:
-    """Картинка для соцсетей текущей версии: только PNG 1200×630 до 2 МБ."""
-    import struct
-    if len(data) > MAX_OG or data[:8] != b"\x89PNG\r\n\x1a\n" or struct.unpack(">II", data[16:24]) != (1200, 630):
-        raise ValueError("ожидается PNG 1200×630 не больше 2 МБ")
-    row = conn.execute("SELECT id FROM versions WHERE state = 'current'").fetchone()
-    target = root / "releases" / row["id"] / "og.png"
-    tmp = target.with_suffix(".png.tmp")
-    tmp.write_bytes(data)
-    tmp.replace(target)
-    return row["id"]
 
 
 def _build_aside(conn, version: str, stored: dict[str, Any], root: Path) -> tuple[Path, dict[str, Any]]:
@@ -210,7 +185,6 @@ def rebuild(conn: psycopg.Connection, version: str, *, actor: str, root: Path = 
     failed = [c for c in site_checks(tmp, manifest) if not c.ok]
     if failed:
         raise PublishBlocked([f"{c.id}: {c.detail}" for c in failed])
-    _keep_og(out, tmp)
     import time
     stale = root / "releases" / f".{version}.replaced-{int(time.time())}"
     out.rename(stale)  # две замены имени подряд: окно без папки — доли миллисекунды

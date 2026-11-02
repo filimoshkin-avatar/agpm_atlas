@@ -54,10 +54,6 @@ fi
 out=$(ssh -i "$PUBLISH_KEY" -o BatchMode=yes "atlas@$HOST" publish 2>>"$LOG"); rc=$?
 summary=$(.venv/bin/python -m atlas.cli summary --version "$version" 2>>"$LOG")
 if [ $rc -eq 0 ]; then
-  # Картинка для соцсетей — снимок матрицы опубликованной версии; неудача не мешает публикации.
-  node tools/og_shot.cjs "https://atlas.agpm.space/" "var/og-$version.png" 2>>"$LOG" \
-    && ssh -i "$PUBLISH_KEY" -o BatchMode=yes "atlas@$HOST" og <"var/og-$version.png" >>"$LOG" 2>&1 \
-    || echo "картинка для соцсетей не обновлена" >>"$LOG"
   notify "Атлас AgPM: опубликована версия $version. $summary https://atlas.agpm.space/versions/$version/ · кабинет: https://atlas.agpm.space/editor/"
 else
   notify "Атлас AgPM: версия $version не опубликована и ждёт кабинета. $out · https://atlas.agpm.space/editor/"

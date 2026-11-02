@@ -158,14 +158,6 @@ def cmd_preview(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_put_og(args: argparse.Namespace) -> int:
-    data = sys.stdin.buffer.read(publish.MAX_OG + 1)
-    with db.connect() as conn:
-        version = publish.put_og(conn, data, args.root or publish.SITE_ROOT)
-    print(json.dumps({"version": version, "og": "/og.png", "bytes": len(data)}, ensure_ascii=False))
-    return 0
-
-
 def cmd_rebuild(args: argparse.Namespace) -> int:
     with db.connect() as conn:
         out = publish.rebuild(conn, args.version, actor=args.actor, root=args.root or publish.SITE_ROOT)
@@ -267,9 +259,6 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("preview", help="собрать предпросмотр последней задержанной версии")
     p.add_argument("--root", type=Path)
     p.set_defaults(func=cmd_preview)
-    p = sub.add_parser("put-og", help="картинка для соцсетей текущей версии из стандартного ввода (PNG 1200×630)")
-    p.add_argument("--root", type=Path)
-    p.set_defaults(func=cmd_put_og)
     p = sub.add_parser("rebuild-site", help="пересобрать папку версии из её снимка под новый код сайта")
     p.add_argument("--version", required=True)
     p.add_argument("--actor", default="выкладка кода")
