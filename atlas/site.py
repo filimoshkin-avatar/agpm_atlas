@@ -65,7 +65,7 @@ def pages(snap: dict[str, Any]) -> list[Page]:
     corridors = {cor["key"]: cor for cor in refs["corridors"]}
     sections = {s["key"]: s for s in refs["sections"]}
     out = [Page(
-        "", "Атлас агентного управления проектами", "Что агентам уже доверяют в проектной работе",
+        "", "Атлас агентного управления проектами", "Агенты в управлении проектами и смежными направлениями деятельности",
         f"Срез на {_ru_date(snap['version']['slice'])}: "
         f"{_pl(sum(1 for i in snap['items'] if i['kind'] == 'scenario'), 'сценарий', 'сценария', 'сценариев')} проектной работы, "
         f"{_pl(sum(1 for i in snap['items'] if i['kind'] == 'neighbor'), 'соседняя территория', 'соседние территории', 'соседних территорий')}, "

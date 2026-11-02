@@ -245,7 +245,7 @@
     setNav('matrix');
     const v = D.version;
     app.innerHTML = `<header class="col"><p class="kicker">Главная матрица</p>
-      <h1 class="title">Что агентам уже доверяют в проектной работе</h1>
+      <h1 class="title">Агенты в управлении проектами и смежными направлениями деятельности</h1>
       <p class="lead">Четыре коридора проектной деятельности, четыре уровня самостоятельности агента. У каждого сценария — сигнал: подтвердилось, заявлено или не подтвердилось, и материалы AgPM Radar, на которых он держится. Нажмите на сценарий, чтобы открыть паспорт.</p>
       ${sliceLine()}
       <div class="viewsw" role="group" aria-label="Вид"><button type="button" class="btn small" data-view="list" aria-pressed="true">Списком</button><button type="button" class="btn small" data-view="sheet" aria-pressed="false">Листом</button></div><p class="scrollhint note">Лист шире экрана: прокрутите его вбок или переключитесь на вид «Списком».</p></header>
