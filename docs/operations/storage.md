@@ -49,3 +49,35 @@ No migration of model execution, no full weekly run repeated on production durin
 ## Agent handoff
 
 Russian implementation handoff and operational cautions: [claude-handoff-2026-11-02.md](claude-handoff-2026-11-02.md). This document remains the source of truth for storage paths and retention.
+
+## Browser failure hardening — 2026-11-09
+
+M-RUNNER passes `NODE_DISABLE_COMPILE_CACHE=1` to its children (including OpenClaw
+inference and notifications). Repeated CLI startup otherwise accumulates compiled
+modules in the shared 192MiB private tmpfs. Do not increase RAM limits or move this
+cache to persistent srv2 storage as an implicit workaround. Model/profile/prompts,
+cache keys, database and publication ordering remain unchanged.
+
+M-A11Y (`tools/a11y_check.cjs`) requires at least 64MiB available in its temporary
+filesystem before launch and before each page. The 32 page/theme/viewport checks
+and serious/critical gate are unchanged. Exit1 denotes accessibility violations;
+exit2 denotes an execution/resource failure. Browser/context cleanup is guaranteed
+on both failure and success. Machine-readable `ATLAS_A11Y_ERROR` includes an
+allowlisted reason, page/operation and tmpfs/cgroup metrics, not raw exceptions.
+
+M-RUNNER-ERRORS (`atlas/run_errors.py`) reports stage, safe reason, exit code,
+run/version and publication state (`not_started`, `attempted`, `published`). It
+never copies stderr, exception text, credentials or DSNs into Telegram or the
+system journal. Run-specific `error.json`, `<stage>.resources.json` before major
+commands and normal stderr are retained in the existing remote run directory.
+Storage finalization/notification failure must not obscure the original error.
+Do not equate a failed publication command with proof that nothing was published.
+
+V-M-RUNNER / V-M-A11Y: `tests/test_weekly_errors.py` and
+`node --test tests/test_a11y.cjs` cover resource preflight, error classification,
+secret suppression, notification failure, cache disabling, command ordering and
+publication guards. Python pytest also invokes the Node tests. Verification:
+Ruff lint/import then format checks for changed Python modules; `scripts/verify.sh`;
+`node --check tools/a11y_check.cjs`; `git diff --check`. pnpm/GRACE CLI gates are
+not present in this Python project; module contracts and this document are the
+GRACE source of truth. See [incident evidence](incidents/2026-11-09-a11y.md).

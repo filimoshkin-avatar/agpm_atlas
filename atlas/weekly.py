@@ -1,6 +1,7 @@
 # START_MODULE_CONTRACT M-RUNNER: unchanged week/preview/a11y/publish ordering.
+# LINKS: docs/operations/storage.md; tests/test_weekly_errors.py
 # DEPENDS: M-STORAGE; existing atlas_tunnel/atlas_publish; projectmanager model.
-# START_CHANGE_SUMMARY: run on srv2, logs/cache/backups on Local Ru; no disk spool.
+# START_CHANGE_SUMMARY: disable accumulating compile cache in bounded tmpfs; typed safe failures and resource evidence; no disk spool.
 import argparse
 import datetime as dt
 import fcntl
@@ -16,17 +17,33 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from atlas import ROOT
-from atlas.storage import Storage
+from atlas.run_errors import RunFailure, command_reason, resource_snapshot
+from atlas.storage import Storage, StorageError
 
 
 class Runner:
     def __init__(self, storage, token, env):
         self.storage, self.token, self.env = storage, token, env
+        self.stage = "setup"
+        self.stderr_tail = ""
 
     def call(self, op, **data):
         return self.storage.call(op, token=self.token, **data)
 
+    def failure(self, rc):
+        return RunFailure(
+            self.stage, command_reason(self.stage, rc, self.stderr_tail), rc
+        )
+
     def command(self, argv, name, timeout=3600):
+        self.stage = name
+        self.stderr_tail = ""
+        if name in {"week", "preview", "a11y", "publish"}:
+            self.call(
+                "put",
+                name=f"{name}.resources.json",
+                text=json.dumps(resource_snapshot()),
+            )
         p = subprocess.Popen(
             argv,
             cwd=ROOT,
@@ -55,6 +72,10 @@ class Runner:
                         name=f"{name}.{key.data}.log",
                         text=raw.decode("utf-8", errors="replace"),
                     )
+                    if key.data == "err":
+                        self.stderr_tail = (
+                            self.stderr_tail + raw.decode("utf-8", errors="replace")
+                        )[-32768:]
                     if key.data == "out":
                         captured.extend(raw)
                         if len(captured) > 4 * 1024**2:
@@ -94,7 +115,7 @@ class Runner:
         ]
         rc, _ = self.command(args, "notification", timeout=90)
         if rc:
-            raise RuntimeError("notification failed")
+            raise self.failure(rc)
 
 
 def execute(check=False, end=None):
@@ -113,10 +134,17 @@ def execute(check=False, end=None):
         "CHROMIUM",
         "/root/.cache/ms-playwright/chromium_headless_shell-1187/chrome-linux/headless_shell",
     )
-    env.update(ATLAS_STORAGE_TOKEN=token, PYTHONDONTWRITEBYTECODE="1")
+    env.update(
+        ATLAS_STORAGE_TOKEN=token,
+        PYTHONDONTWRITEBYTECODE="1",
+        NODE_DISABLE_COMPILE_CACHE="1",
+    )
     runner = Runner(storage, token, env)
     tunnel = None
     status = "failed"
+    version = None
+    publication = "not_started"
+    failure = None
     try:
         # Dedicated foreground tunnel dies with the runner/service, no socket files.
         port = 55432
@@ -157,7 +185,7 @@ def execute(check=False, end=None):
         )
         for _ in range(20):
             if tunnel.poll() is not None:
-                raise RuntimeError("tunnel failed")
+                raise RunFailure("setup", "tunnel_failed")
             try:
                 with psycopg.connect(env["ATLAS_DSN"], connect_timeout=2) as conn:
                     conn.execute("SELECT 1")
@@ -165,7 +193,8 @@ def execute(check=False, end=None):
             except psycopg.OperationalError:
                 time.sleep(0.5)
         else:
-            raise RuntimeError("database unavailable")
+            raise RunFailure("setup", "database_unavailable")
+        runner.stage = "backup"
         backup = runner.call("backup")
         runner.call("put", name="backup.json", text=json.dumps(backup))
         py = str(ROOT / ".venv/bin/python")
@@ -188,7 +217,7 @@ def execute(check=False, end=None):
                 300,
             )
             if rc:
-                raise RuntimeError("a11y failed")
+                raise runner.failure(rc)
             status = "checked"
             return rid
         while True:
@@ -207,9 +236,15 @@ def execute(check=False, end=None):
                     )
                     time.sleep(60)
                 continue
-            raise RuntimeError(f"week failed ({rc})")
+            raise runner.failure(rc)
         runner.call("put", name="week.json", text=output)
-        version = json.loads(output).get("version")
+        candidate = json.loads(output).get("version")
+        if candidate is not None and (
+            not isinstance(candidate, str)
+            or dt.date.fromisoformat(candidate).isoformat() != candidate
+        ):
+            raise RunFailure("week", "unexpected")
+        version = candidate
         if not version:
             runner.notify(
                 "Атлас AgPM: за неделю новых материалов нет, версия не создана."
@@ -229,19 +264,47 @@ def execute(check=False, end=None):
             ),
             (ssh + ["publish"], "publish", 300),
         ]:
+            if name == "publish":
+                publication = "attempted"
             rc, _ = runner.command(args, name, timeout)
             if rc:
-                raise RuntimeError(f"{name} failed ({rc}); version held")
+                raise runner.failure(rc)
+            if name == "publish":
+                publication = "published"
         rc, summary = runner.command(
             [py, "-m", "atlas.cli", "summary", "--version", version], "summary", 60
         )
         if rc:
-            raise RuntimeError("summary failed after publication")
+            raise runner.failure(rc)
         runner.notify(
             f"Атлас AgPM: опубликована версия {version}. {summary.strip()} https://atlas.agpm.space/versions/{version}/"
         )
         status = "success"
         return rid
+    except Exception as exc:
+        if isinstance(exc, RunFailure):
+            failure = exc
+        else:
+            reason = (
+                "storage_failed"
+                if isinstance(exc, StorageError)
+                else "timeout"
+                if isinstance(exc, TimeoutError)
+                else "unexpected"
+            )
+            failure = RunFailure(runner.stage, reason)
+        failure.run_id, failure.version, failure.publication = rid, version, publication
+        try:
+            runner.call(
+                "put",
+                name="error.json",
+                text=json.dumps({**failure.report(), "resources": resource_snapshot()}),
+            )
+        except Exception:
+            pass  # Preserve the original failure when storage itself is unavailable.
+        if failure is exc:
+            raise
+        raise failure from exc
     finally:
         if tunnel is not None:
             tunnel.terminate()
@@ -250,8 +313,19 @@ def execute(check=False, end=None):
             except subprocess.TimeoutExpired:
                 tunnel.kill()
                 tunnel.wait()
-        runner.call("end", state=status)
-        lock.close()
+        try:
+            runner.call("end", state=status)
+        except Exception as exc:
+            if failure is None:
+                end_failure = RunFailure("finalize", "storage_failed")
+                end_failure.run_id, end_failure.version, end_failure.publication = (
+                    rid,
+                    version,
+                    publication,
+                )
+                raise end_failure from exc
+        finally:
+            lock.close()
 
 
 def main():
@@ -264,25 +338,39 @@ def main():
         print(json.dumps({"run": rid, "ok": True}))
     except Exception as exc:
         # No traceback/DSN/payload in the local system journal.
-        print(f"Atlas runner failed: {type(exc).__name__}", file=sys.stderr)
-        if not a.check:
-            c = Storage().config
-            subprocess.run(
-                [
-                    "openclaw",
-                    "message",
-                    "send",
-                    "--channel",
-                    "telegram",
-                    "--target",
-                    c["notify_target"],
-                    "--message",
-                    f"Атлас: прогон остановлен ({type(exc).__name__}). Проверьте хранилище и удалённый журнал.",
-                ],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=90,
+        failure = (
+            exc
+            if isinstance(exc, RunFailure)
+            else RunFailure(
+                "setup",
+                "storage_failed" if isinstance(exc, StorageError) else "unexpected",
             )
+        )
+        text = failure.message()
+        print(text, file=sys.stderr)
+        if not a.check:
+            try:
+                c = Storage().config
+                subprocess.run(
+                    [
+                        "openclaw",
+                        "message",
+                        "send",
+                        "--channel",
+                        "telegram",
+                        "--target",
+                        c["notify_target"],
+                        "--message",
+                        text,
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=90,
+                    check=True,
+                    env={**os.environ, "NODE_DISABLE_COMPILE_CACHE": "1"},
+                )
+            except Exception:
+                print("Atlas: failure notification could not be sent", file=sys.stderr)
         return 1
     return 0
 
