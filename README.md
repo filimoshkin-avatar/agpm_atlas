@@ -3,7 +3,7 @@
 Еженедельный «Атлас агентного управления проектами» по материалам AgPM Radar,
 сайт — https://atlas.agpm.space/.
 
-Сайт: https://atlas.agpm.space/ · кабинет: https://atlas.agpm.space/editor/
+Сайт: https://atlas.agpm.space/ · 
 
 Этапы 0–4 выполнены: `docs/Записка_разведки_v1.md`, `docs/Отчёт_переноса_v1.md`,
 `docs/Отчёт_этапа_2_v1.md`, `docs/План_этапа_3_v1.md`, `docs/Отчёт_этапа_4_v1.md`.
