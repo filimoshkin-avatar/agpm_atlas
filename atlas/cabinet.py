@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from http import cookies
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
@@ -25,7 +25,7 @@ from datetime import date as _date
 
 import json
 
-from atlas import ROOT, db, editor, publish
+from atlas import ROOT, candidates, db, editor, publish
 from atlas import settings as settings_mod
 
 PREFIX = "/editor"
@@ -127,6 +127,10 @@ class Cabinet:
             parts = sub.strip("/").split("/")
             query = {k: v[0] for k, v in parse_qs(environ.get("QUERY_STRING", "")).items()}
             try:
+                if sub == "/candidate" and method == "GET":
+                    return self.candidate(conn, user, int(query.get("id", "0")))
+                if parts[0] == "candidate" and method == "POST" and len(parts) == 2:
+                    return self.candidate_post(conn, user, int(parts[1]), form)
                 if sub == "/material" and method == "GET":
                     return self.material(conn, user, query)
                 if parts[0] == "material" and method == "POST" and len(parts) >= 2:
@@ -158,6 +162,9 @@ class Cabinet:
                 sep = "&" if "?" in back else "?"
                 return redirect(f"{back}{sep}m=Не сохранено: {str(exc)[:200]}")
             if method == "POST" and sub.startswith("/queue/") and sub.endswith("/resolve"):
+                queued = conn.execute("SELECT kind FROM queue WHERE id=%s", (int(sub.split("/")[2]),)).fetchone()
+                if queued and queued["kind"] == "кандидат в сценарии":
+                    return redirect(f"{PREFIX}/queue?" + urlencode({"m": "Откройте предложение и примите или отклоните его"}))
                 conn.execute("UPDATE queue SET resolved_at = now() WHERE id = %s AND resolved_at IS NULL", (int(sub.split("/")[2]),))
                 conn.execute("INSERT INTO edits (actor, object, object_id, field, after, reason) VALUES (%s, 'queue', %s, 'resolved', 'true', %s)",
                              (user["email"], sub.split("/")[2], form.get("reason", "")))
@@ -228,11 +235,97 @@ class Cabinet:
         return self._page("feed.html.j2", user, conn, versions=versions, message=message, active="feed")
 
     def queue(self, conn, user) -> Response:
-        rows = conn.execute("SELECT * FROM queue WHERE resolved_at IS NULL ORDER BY kind, id").fetchall()
+        rows = conn.execute("""SELECT q.*, (SELECT c.id FROM candidates c WHERE c.material_id=q.object_id
+            AND c.run_id IS NOT DISTINCT FROM q.run_id AND c.state='pending' ORDER BY c.id DESC LIMIT 1) AS candidate_id
+            FROM queue q WHERE q.resolved_at IS NULL ORDER BY q.kind,q.id""").fetchall()
         groups: dict[str, list[Any]] = {}
         for r in rows:
             groups.setdefault(r["kind"], []).append(r)
         return self._page("queue.html.j2", user, conn, groups=groups, active="queue")
+
+    # M-CANDIDATES: authenticated preview/save/accept, publication remains separate.
+    def candidate(self, conn, user, cid, form=None, prepared=None, message=""):
+        c, rows = candidates.load(conn, cid)
+        values = form if form is not None else {**c["proposal"], **c["draft"]}
+        selected = (
+            {
+                k.removeprefix("include_")
+                for k, v in form.items()
+                if k.startswith("include_") and v == "yes"
+            }
+            if form is not None
+            else {r["material_id"] for r in rows if r["decision"] != "excluded"}
+        )
+        roles = {
+            r["name"]: r["default_grade"]
+            for r in conn.execute("SELECT name,default_grade FROM ref_roles")
+        }
+        materials = [
+            {
+                **r,
+                "checked": r["material_id"] in selected,
+                "checked_evidence": candidates.evidence(r, roles),
+            }
+            for r in rows
+        ]
+        similar = conn.execute(
+            "SELECT key,title FROM items WHERE kind='scenario' AND status NOT IN ('retired','merged') ORDER BY position"
+        ).fetchall()
+        return self._page(
+            "candidate.html.j2",
+            user,
+            conn,
+            candidate=c,
+            materials=materials,
+            values=values,
+            prepared=prepared,
+            message=message,
+            similar=similar,
+            active="queue",
+            corridors=conn.execute(
+                "SELECT key,name FROM ref_corridors ORDER BY position"
+            ).fetchall(),
+            levels=conn.execute("SELECT n,name FROM ref_levels ORDER BY n").fetchall(),
+        )
+
+    def candidate_post(self, conn, user, cid, form):
+        action = form.get("action")
+        try:
+            if action == "preview":
+                c, rows = candidates.load(conn, cid)
+                candidates._check_revision(c, form)
+                return self.candidate(
+                    conn, user, cid, form, candidates.prepare(conn, c, rows, form)
+                )
+            if action in ("save", "reject"):
+                candidates.save(
+                    conn, cid, form, user["email"], reject=action == "reject"
+                )
+                conn.commit()
+                return self.candidate(
+                    conn,
+                    user,
+                    cid,
+                    message="Предложение отклонено"
+                    if action == "reject"
+                    else "Отбор сохранён. Материалы не удалены из Radar и Атласа.",
+                )
+            if action == "accept":
+                key = candidates.accept(conn, cid, form, user["email"])
+                conn.commit()
+                return redirect(
+                    f"{PREFIX}/scenario?"
+                    + urlencode(
+                        {
+                            "key": key,
+                            "m": "Сценарий сохранён. Для публикации создайте новую версию в разделе «Версии»",
+                        }
+                    )
+                )
+            raise ValueError("Неизвестное действие")
+        except (ValueError, LookupError) as exc:
+            conn.rollback()
+            return self.candidate(conn, user, cid, form, message=f"Не сохранено: {exc}")
 
     # ---------- материал ----------
 

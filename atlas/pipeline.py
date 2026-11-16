@@ -16,7 +16,7 @@ from typing import Any
 
 import psycopg
 
-from atlas import language, numbers, rules, settings, snapshot
+from atlas import candidates, language, numbers, rules, settings, snapshot
 from atlas.classify import PROMPT_VERSION, Context
 from atlas.importer import issue_number
 from atlas.model import Model, ModelError
@@ -406,6 +406,7 @@ def run_week(conn: psycopg.Connection, *, end: date, model: Model, sources: Sour
         classify_record(conn, record, ctx=ctx, model=model, sources=sources, version=version, run_id=run_id, report=report, today=today)
         conn.commit()
 
+    candidates.refresh(conn)
     recompute(conn, version, run_id, report)
     rewrite_passports(conn, report, model, run_id, version)
     if report.classified or report.signal_changes:

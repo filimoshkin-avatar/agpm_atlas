@@ -1,0 +1,34 @@
+{% extends "cabinet.html.j2" %}{% block title %}Предложение сценария{% endblock %}{% block heading %}Новый сценарий{% endblock %}
+{% block content %}
+<p><a href="{{ prefix }}/queue">← Вернуться к очереди</a></p>
+{% if candidate.state != 'pending' %}
+<div class="panel"><h2>{{ candidate.proposal.title }}</h2><p>{{ 'Принято' if candidate.state == 'accepted' else 'Отклонено' }} · {{ candidate.reviewed_by }}</p>
+{% if candidate.item_key %}<a class="btn" href="{{ prefix }}/scenario?key={{ candidate.item_key }}">Открыть созданный сценарий</a><p>Сохранение сценария не означает публикацию. Выпуск доступен в разделе «Версии».</p>{% endif %}</div>
+{% else %}
+<form method="post" action="{{ prefix }}/candidate/{{ candidate.id }}">
+<input type="hidden" name="csrf" value="{{ user.csrf }}"><input type="hidden" name="revision" value="{{ candidate.revision }}">
+<div class="panel"><h2>Предложение</h2>
+<label class="field"><span>Название, до 160 знаков</span><input name="title" maxlength="160" value="{{ values.get('title', '') }}"></label>
+<label class="field"><span>Что делает агент, до 200 знаков</span><textarea name="what" maxlength="200">{{ values.get('what', '') }}</textarea></label>
+<div class="two"><label class="field"><span>Коридор главной матрицы</span><select name="corridor"><option value="">Нужно уточнить</option>{% for c in corridors %}<option value="{{ c.key }}"{{ ' selected' if c.key == values.get('corridor') }}>{{ c.key }} · {{ c.name }}</option>{% endfor %}</select></label>
+<label class="field"><span>Уровень самостоятельности</span><select name="level"><option value="">Нужно уточнить</option>{% for lv in levels %}<option value="{{ lv.n }}"{{ ' selected' if lv.n|string == values.get('level')|string }}>{{ lv.n }} · {{ lv.name }}</option>{% endfor %}</select></label></div>
+<p class="note">Размещение предложено автоматически. Если уровень не установлен, сохраните отбор и уточните его по источникам. Создание карточки требует определённого уровня.</p>
+</div>
+<div class="panel"><h2>Материалы Radar · {{ materials|length }}</h2><p>Снимите отметку, чтобы исключить материал только из этого сценария. Он останется в Radar, Атласе и других сценариях. Подбор по общим словам не означает подтверждение.</p>
+{% for m in materials %}<section class="panel">
+<label><input type="checkbox" name="include_{{ m.material_id }}" value="yes"{{ ' checked' if m.checked }}{{ ' disabled' if m.status != 'in_atlas' }}> <b>№ {{ m.num or 'без номера' }} · {{ m.title }}</b></label>
+<p>{{ m.summary }}</p><p class="note">{{ m.suggestion }}{% if m.decision == 'excluded' %} · ранее исключён из предложения{% endif %}{% if m.status != 'in_atlas' %} · материал больше не входит в Атлас{% endif %}</p>
+<p><a href="{{ prefix }}/material?id={{ m.material_id }}" target="_blank" rel="noopener">Карточка материала</a> · <a href="{{ m.url }}" target="_blank" rel="noopener noreferrer">Первоисточник</a></p>
+<p><b>{{ m.checked_evidence.role }}</b> · {{ {'confirms':'подтверждает','claims':'заявляет','refutes':'опровергает','warns':'предупреждает','background':'фон'}[m.checked_evidence.grade] }} · {{ 'учитывается для сигнала' if m.checked_evidence.counts else 'не учитывается для сигнала' }}</p>
+<p>{{ m.checked_evidence.basis }}</p>{% if m.checked_evidence.quote %}<blockquote>{{ m.checked_evidence.quote }}</blockquote>{% else %}<p class="note">Проверенной цитаты для этой связи нет.</p>{% endif %}
+</section>{% endfor %}
+</div>
+<div class="panel"><label class="field"><span>Комментарий редактора</span><input name="reason" maxlength="2000" value="{{ values.get('reason', candidate.review_note) }}"></label>
+<div class="toolbar"><button class="btn" name="action" value="save">Сохранить отбор</button><button class="btn primary" name="action" value="preview">Проверить будущую карточку</button><button class="btn" name="action" value="reject" data-confirm="Отклонить предложение? Материалы останутся в Radar и Атласе.">Отклонить предложение</button></div>
+</div>
+{% if prepared %}<div class="panel" role="status"><h2>Предпросмотр карточки</h2><h3>{{ prepared.title }}</h3><p>{{ prepared.what }}</p><p>Главная матрица · коридор {{ prepared.corridor }} · уровень {{ prepared.level }}</p><p>Материалов: {{ prepared.links|length }}. Сигнал: <b>{{ signals[prepared.signal] }}</b>.</p>
+{% if prepared.conflict %}<p>Есть подтверждение и опровержение. Сигнал «Заявлено», конфликт будет передан редактору.</p>{% endif %}
+<p>Будут сохранены только выбранные материалы. Для публикации потребуется отдельно выпустить новую версию.</p><input type="hidden" name="preview_digest" value="{{ prepared.digest }}"><button class="btn primary" name="action" value="accept">Принять и создать сценарий</button></div>{% endif %}
+</form>
+<details class="panel"><summary>Проверить существующие сценарии перед созданием</summary><ul>{% for i in similar %}<li><a href="{{ prefix }}/scenario?key={{ i.key }}" target="_blank" rel="noopener">{{ i.title }}</a></li>{% endfor %}</ul><p>Если сценарий уже есть, связь с ним можно добавить из карточки материала. Затем отклоните дублирующее предложение.</p></details>
+{% endif %}{% endblock %}
