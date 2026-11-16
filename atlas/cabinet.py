@@ -308,7 +308,7 @@ class Cabinet:
                     cid,
                     message="Предложение отклонено"
                     if action == "reject"
-                    else "Отбор сохранён. Материалы не удалены из Radar и Атласа.",
+                    else "Отбор сохранён, но сценарий ещё не создан. Нажмите «Проверить будущую карточку», затем «Принять и создать сценарий».",
                 )
             if action == "accept":
                 key = candidates.accept(conn, cid, form, user["email"])

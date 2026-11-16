@@ -55,6 +55,7 @@ def seed(conn, *, level=2, counted=False):
         {
             "revision": "0",
             "reason": "Проверено",
+            "card_line": "Заявлено: агент проверяет строительные документы.",
             **{"include_" + m["id"]: "yes" for m in mats},
         }
     )
@@ -350,3 +351,26 @@ def test_refresh_invalidates_open_selection(base):
     candidates.refresh(base)
     with pytest.raises(ValueError, match="изменилось"):
         candidates.save(base, cid, form, "editor")
+
+
+def test_card_example_is_required_saved_and_part_of_preview(base):
+    cid, mats, form = seed(base)
+    c, rows = candidates.load(base, cid)
+    for bad in ("", "x" * 115, "Материалы: № 1, № 2"):
+        with pytest.raises(ValueError, match="пример"):
+            candidates.prepare(base, c, rows, {**form, "card_line": bad})
+    candidates.save(base, cid, form, "editor")
+    c, rows = candidates.load(base, cid)
+    assert c["draft"]["card_line"] == form["card_line"]
+    form["revision"] = str(c["revision"])
+    preview(base, cid, form)
+    changed = {**form, "card_line": "Другой пример"}
+    with pytest.raises(ValueError, match="предпросмотр"):
+        candidates.accept(base, cid, changed, "editor")
+    key = candidates.accept(base, cid, form, "editor")
+    assert (
+        base.execute("SELECT card_line FROM items WHERE key=%s", (key,)).fetchone()[
+            "card_line"
+        ]
+        == form["card_line"]
+    )

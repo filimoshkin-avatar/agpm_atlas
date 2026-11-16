@@ -10,6 +10,8 @@
 <div class="panel"><h2>Предложение</h2>
 <label class="field"><span>Название, до 160 знаков</span><input name="title" maxlength="160" value="{{ values.get('title', '') }}"></label>
 <label class="field"><span>Что делает агент, до 200 знаков</span><textarea name="what" maxlength="200">{{ values.get('what', '') }}</textarea></label>
+<label class="field"><span>Пример для карточки, до 114 знаков</span><textarea name="card_line" maxlength="114">{{ values.get('card_line', '') }}</textarea></label>
+<p class="note">Укажите продукт или организацию и конкретное действие из выбранного материала. Для описания продавца пишите «заявлено», не выдавая его за подтверждённое применение. Номера материалов останутся в подробностях сценария.</p>
 <div class="two"><label class="field"><span>Коридор главной матрицы</span><select name="corridor"><option value="">Нужно уточнить</option>{% for c in corridors %}<option value="{{ c.key }}"{{ ' selected' if c.key == values.get('corridor') }}>{{ c.key }} · {{ c.name }}</option>{% endfor %}</select></label>
 <label class="field"><span>Уровень самостоятельности</span><select name="level"><option value="">Нужно уточнить</option>{% for lv in levels %}<option value="{{ lv.n }}"{{ ' selected' if lv.n|string == values.get('level')|string }}>{{ lv.n }} · {{ lv.name }}</option>{% endfor %}</select></label></div>
 <p class="note">Размещение предложено автоматически. Если уровень не установлен, сохраните отбор и уточните его по источникам. Создание карточки требует определённого уровня.</p>
@@ -26,7 +28,7 @@
 <div class="panel"><label class="field"><span>Комментарий редактора</span><input name="reason" maxlength="2000" value="{{ values.get('reason', candidate.review_note) }}"></label>
 <div class="toolbar"><button class="btn" name="action" value="save">Сохранить отбор</button><button class="btn primary" name="action" value="preview">Проверить будущую карточку</button><button class="btn" name="action" value="reject" data-confirm="Отклонить предложение? Материалы останутся в Radar и Атласе.">Отклонить предложение</button></div>
 </div>
-{% if prepared %}<div class="panel" role="status"><h2>Предпросмотр карточки</h2><h3>{{ prepared.title }}</h3><p>{{ prepared.what }}</p><p>Главная матрица · коридор {{ prepared.corridor }} · уровень {{ prepared.level }}</p><p>Материалов: {{ prepared.links|length }}. Сигнал: <b>{{ signals[prepared.signal] }}</b>.</p>
+{% if prepared %}<div class="panel" role="status"><h2>Предпросмотр карточки</h2><h3>{{ prepared.title }}</h3><p>{{ prepared.what }}</p><p><b>Пример на карточке:</b> {{ prepared.card_line }}</p><p>Главная матрица · коридор {{ prepared.corridor }} · уровень {{ prepared.level }}</p><p>Материалов: {{ prepared.links|length }}. Сигнал: <b>{{ signals[prepared.signal] }}</b>.</p>
 {% if prepared.conflict %}<p>Есть подтверждение и опровержение. Сигнал «Заявлено», конфликт будет передан редактору.</p>{% endif %}
 <p>Будут сохранены только выбранные материалы. Для публикации потребуется отдельно выпустить новую версию.</p><input type="hidden" name="preview_digest" value="{{ prepared.digest }}"><button class="btn primary" name="action" value="accept">Принять и создать сценарий</button></div>{% endif %}
 </form>

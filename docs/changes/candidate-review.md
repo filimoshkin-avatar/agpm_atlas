@@ -60,3 +60,18 @@ login → release → redirect → publish → redirect passed on isolated test 
 release navigates safely. Ruff import fix applied; lint passes except pre-existing
 F811/E702/E741 in test_cabinet.py. Legacy whole-file formatting skipped to avoid
 unrelated churn. git diff --check passes.
+
+
+## Readable card examples — Ivan26858
+START_CHANGE_SUMMARY: M-CANDIDATES / M-CABINET / V-M-CANDIDATES. Source of truth:
+Atlas rules section8 card_line; new scenarios must carry a readable source-grounded
+example, not a material-number list. Required <=114 character form field is saved
+in draft, displayed in preview, included in digest and copied unchanged to item.
+Save explicitly says it does not create the scenario. No source selection, signal,
+level or publication is automatically approved. Existing snapshot remains immutable.
+Verification:13 candidate tests passed including required example, draft persistence,
+stale preview digest and exact item text. Actual Chromium login/save/preview/create
+passed with readable card text. Ruff lint/import and format gates, October reference
+and diff check passed. UI uses existing field/textarea/note tokens.
+Existing S_candidate_4 repair uses editor.edit_item with audit, backup and a stale
+value check; no signal/links changed and no existing version snapshot rewritten.

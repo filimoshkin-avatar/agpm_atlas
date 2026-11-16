@@ -139,6 +139,11 @@ def evidence(row, roles):
 
 def prepare(conn, c, rows, form):
     title, what = form.get("title", "").strip(), form.get("what", "").strip()
+    card_line = form.get("card_line", "").strip()
+    if not card_line or len(card_line) > 114 or card_line.startswith("Материалы:"):
+        raise ValueError(
+            "Укажите понятный пример для карточки до 114 знаков, а не список номеров"
+        )
     corridor, level = form.get("corridor", ""), form.get("level", "")
     if not title or len(title) > 160 or not what or len(what) > 200:
         raise ValueError("Укажите название до 160 и описание до 200 знаков")
@@ -173,6 +178,7 @@ def prepare(conn, c, rows, form):
     result = {
         "title": title,
         "what": what,
+        "card_line": card_line,
         "corridor": corridor,
         "level": int(level),
         "links": links,
@@ -206,7 +212,10 @@ def save(conn, cid, form, actor, *, reject=False):
     }
     if not selected <= known:
         raise ValueError("Неизвестный материал")
-    draft = {k: form.get(k, "")[:500] for k in ("title", "what", "corridor", "level")}
+    draft = {
+        k: form.get(k, "")[:500]
+        for k in ("title", "what", "card_line", "corridor", "level")
+    }
     for row in rows:
         conn.execute(
             """UPDATE candidate_materials SET decision=%s,reviewed_by=%s,reviewed_at=now()
@@ -292,7 +301,7 @@ def accept(conn, cid, form, actor):
             prepared["title"],
             prepared["what"],
             why[:400],
-            ("Материалы: " + nums)[:114],
+            prepared["card_line"],
             prepared["signal"],
             "editor:" + actor,
         ),
