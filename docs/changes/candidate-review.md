@@ -75,3 +75,14 @@ passed with readable card text. Ruff lint/import and format gates, October refer
 and diff check passed. UI uses existing field/textarea/note tokens.
 Existing S_candidate_4 repair uses editor.edit_item with audit, backup and a stale
 value check; no signal/links changed and no existing version snapshot rewritten.
+
+
+## Required fields — Ivan26862
+START_CHANGE_SUMMARY: M-CABINET candidate form marks five required fields and
+material selection with red asterisks plus text. Native required validation for
+preview/accept; save/reject use formnovalidate to preserve partial drafts.
+Prefill pending candidates3/6 examples from previously reviewed materials936/1067;
+do not replace nonempty editor text, choose unknown level or accept proposals.
+Browser check passed:5 required fields, invalid preview blocked, partial save allowed,
+valid preview displayed; widths390/1440 no overflow. Uses existing field/note tokens
+and --bad color. No backend contract/schema change. git diff --check passed.
