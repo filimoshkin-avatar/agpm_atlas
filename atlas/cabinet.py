@@ -10,20 +10,18 @@ WSGI-приложение без сторонних библиотек инте�
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
+from datetime import date as _date
 from datetime import datetime, timedelta, timezone
 from http import cookies
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import parse_qs, urlencode
+from urllib.parse import parse_qs, quote, urlencode
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-
-from datetime import date as _date
-
-import json
 
 from atlas import ROOT, candidates, db, editor, publish
 from atlas import settings as settings_mod
@@ -74,7 +72,7 @@ class Response:
 
 
 def redirect(location: str, extra: list[tuple[str, str]] | None = None) -> Response:
-    return Response("", "303 See Other", [("Location", location), *(extra or [])])
+    return Response("", "303 See Other", [("Location", quote(location, safe="/:?#[]@!$&'()*+,;=%")), *(extra or [])])
 
 
 class Cabinet:
@@ -143,6 +141,8 @@ class Cabinet:
                     return self.scenario_post(conn, user, parts, form)
                 if sub == "/versions" and method == "GET":
                     return self.versions(conn, user, query)
+                if sub == "/release" and method == "GET":
+                    return redirect(f"{PREFIX}/versions")
                 if sub == "/release" and method == "POST":
                     return self.release_now(conn, user, form)
                 if sub == "/sheet":
@@ -475,7 +475,8 @@ class Cabinet:
     # ---------- тексты листа ----------
 
     def sheet(self, conn, user, query) -> Response:
-        from atlas import rules, snapshot as snap_mod
+        from atlas import rules
+        from atlas import snapshot as snap_mod
         texts = conn.execute("SELECT * FROM sheet_texts ORDER BY position").fetchall()
         data = snap_mod.build(conn, {"id": "", "slice": "", "title": "", "prev": None, "radar_range": {}, "note": ""}, [])
         shown = {t["key"]: t for t in rules.sheet_texts(data)}

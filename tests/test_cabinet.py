@@ -1,6 +1,7 @@
 import io
 from datetime import date
-from urllib.parse import urlencode
+from urllib.parse import unquote, urlencode
+from wsgiref.headers import Headers
 
 import pytest
 
@@ -61,7 +62,9 @@ def test_feed_shows_held_version_and_publish_button_works(app):
     foreign = req(a, "POST", "/editor/publish/2026-11-01", {"csrf": csrf}, cookie=cookie, origin="https://evil.test")
     assert foreign.status.startswith("403")
     ok = req(a, "POST", "/editor/publish/2026-11-01", {"csrf": csrf, "force_sharp": "1"}, cookie=cookie, origin="https://atlas.test")
-    assert "опубликована" in dict(ok.headers)["Location"]
+    assert bytes(Headers(ok.headers))
+    assert dict(ok.headers)["Location"].isascii()
+    assert "опубликована" in unquote(dict(ok.headers)["Location"])
     assert conn.execute("SELECT state FROM versions WHERE id = '2026-11-01'").fetchone()["state"] == "current"
     assert conn.execute("SELECT actor FROM edits WHERE field = 'publish'").fetchone()["actor"] == "ed@agpm.space"
 
@@ -73,9 +76,9 @@ def test_rollback_needs_reason_and_queue_resolves(app):
     req(a, "POST", "/editor/publish/2026-10-09", {"csrf": csrf}, cookie=cookie, origin="https://atlas.test")
     req(a, "POST", "/editor/publish/2026-11-01", {"csrf": csrf, "force_sharp": "1"}, cookie=cookie, origin="https://atlas.test")
     r = req(a, "POST", "/editor/rollback/2026-10-09", {"csrf": csrf, "reason": ""}, cookie=cookie, origin="https://atlas.test")
-    assert "нужна причина" in dict(r.headers)["Location"]
+    assert "нужна причина" in unquote(dict(r.headers)["Location"])
     r = req(a, "POST", "/editor/rollback/2026-10-09", {"csrf": csrf, "reason": "сбой модели"}, cookie=cookie, origin="https://atlas.test")
-    assert "возвращён" in dict(r.headers)["Location"]
+    assert "возвращён" in unquote(dict(r.headers)["Location"])
     qid = conn.execute("SELECT id FROM queue WHERE resolved_at IS NULL LIMIT 1").fetchone()
     if qid:
         req(a, "POST", f"/editor/queue/{qid['id']}/resolve", {"csrf": csrf}, cookie=cookie, origin="https://atlas.test")
@@ -108,15 +111,15 @@ def test_material_screen_edit_link_and_exclude(app):
     assert "№ 117" in page and "Связи со сценариями" in page and "Подсказки и черновики планов" in page
     o = "https://atlas.test"
     r = req(a, "POST", "/editor/material/m000117/save", {"csrf": _csrf(conn), "summary": "Новая суть обзора.", "reason": "правка"}, cookie=cookie, origin=o)
-    assert "Сохранено полей: 1" in dict(r.headers)["Location"]
+    assert "Сохранено полей: 1" in unquote(dict(r.headers)["Location"])
     assert conn.execute("SELECT summary FROM materials WHERE id = 'm000117'").fetchone()["summary"] == "Новая суть обзора."
     r = req(a, "POST", "/editor/material/m000001/link", {"csrf": _csrf(conn), "item": "A2_intake", "role": "продукт",
             "grade": "claims", "reason": "проверка"}, cookie=cookie, origin=o)
-    assert "Связь добавлена" in dict(r.headers)["Location"]
+    assert "Связь добавлена" in unquote(dict(r.headers)["Location"])
     r = req(a, "POST", "/editor/material/m000001/exclude", {"csrf": _csrf(conn), "reason": ""}, cookie=cookie, origin=o)
-    assert "Не сохранено" in dict(r.headers)["Location"]
+    assert "Не сохранено" in unquote(dict(r.headers)["Location"])
     r = req(a, "POST", "/editor/material/m000001/exclude", {"csrf": _csrf(conn), "reason": "не об агентах"}, cookie=cookie, origin=o)
-    assert "исключён" in dict(r.headers)["Location"]
+    assert "исключён" in unquote(dict(r.headers)["Location"])
     assert conn.execute("SELECT status FROM materials WHERE id = 'm000001'").fetchone()["status"] == "excluded"
 
 
@@ -126,12 +129,14 @@ def test_scenario_signal_and_release_now(app):
     o = "https://atlas.test"
     assert "История сигнала" in req(a, "GET", "/editor/scenario", cookie=cookie, query="key=B1_drafts").body.decode()
     r = req(a, "POST", "/editor/scenario/B1_drafts/signal", {"csrf": _csrf(conn), "signal": "confirmed", "reason": ""}, cookie=cookie, origin=o)
-    assert "Не сохранено" in dict(r.headers)["Location"]
+    assert "Не сохранено" in unquote(dict(r.headers)["Location"])
     req(a, "POST", "/editor/scenario/B1_drafts/signal", {"csrf": _csrf(conn), "signal": "confirmed", "reason": "решение редакции"}, cookie=cookie, origin=o)
     page = req(a, "GET", "/editor/versions", cookie=cookie).body.decode()
     assert "сигнал задан редактором" in page and "Выпустить сейчас" in page
     r = req(a, "POST", "/editor/release", {"csrf": _csrf(conn), "title": "Уточнения"}, cookie=cookie, origin=o)
-    loc = dict(r.headers)["Location"]
+    assert bytes(Headers(r.headers))
+    assert dict(r.headers)["Location"].isascii()
+    loc = unquote(dict(r.headers)["Location"])
     assert "Собрана версия" in loc and "/v/" in loc
     vid = conn.execute("SELECT id FROM versions WHERE state = 'held' ORDER BY created_at DESC LIMIT 1").fetchone()["id"]
     assert (a.site_root / "releases" / vid / "index.html").is_file()
@@ -148,14 +153,14 @@ def test_sheet_refs_runs_settings(app):
     assert "bracket-high" in page and "показан" in page
     r = req(a, "POST", "/editor/sheet", {"csrf": _csrf(conn), "key": "bracket-high", "mode": "built", "op": "none",
             "items": "scenario", "level": "4", "signal": "confirmed", "text": "Пока заявления и сбои"}, cookie=cookie, origin=o)
-    assert "изменено 1" in dict(r.headers)["Location"]
+    assert "изменено 1" in unquote(dict(r.headers)["Location"])
     cond = json.loads(conn.execute("SELECT condition FROM sheet_texts WHERE key = 'bracket-high'").fetchone()["condition"])
     assert cond == {"items": "scenario", "level": "4", "corridor": "", "signal": "confirmed", "op": "none"}
     assert "Практики контроля" in req(a, "GET", "/editor/refs", cookie=cookie).body.decode()
     r = req(a, "POST", "/editor/refs", {"csrf": _csrf(conn), "kind": "practices", "key": "nadzor", "name": "Надзор людьми и журнал"}, cookie=cookie, origin=o)
-    assert "Сохранено полей: 1" in dict(r.headers)["Location"]
+    assert "Сохранено полей: 1" in unquote(dict(r.headers)["Location"])
     r = req(a, "POST", "/editor/refs", {"csrf": _csrf(conn), "kind": "sections", "action": "add", "key": "кириллица", "name": "x", "short": "x"}, cookie=cookie, origin=o)
-    assert "Не сохранено" in dict(r.headers)["Location"]
+    assert "Не сохранено" in unquote(dict(r.headers)["Location"])
     assert "Обращений" in req(a, "GET", "/editor/runs", cookie=cookie).body.decode()
     # настройки — только администратору
     assert req(a, "GET", "/editor/settings", cookie=cookie).status.startswith("403")
@@ -168,3 +173,23 @@ def test_sheet_refs_runs_settings(app):
     assert r.status.startswith("200") and "Пароль для new@agpm.space" in body and "Location" not in dict(r.headers)
     lines = __import__("atlas.editor", fromlist=["x"]).editorial_lines(conn)
     assert any("вывод листа" in l for l in lines) and any("справочник" in l for l in lines)
+
+
+def test_release_get_is_safe_navigation(app):
+    a, conn = app
+    cookie = _login(a)
+    before = conn.execute("SELECT count(*) AS n FROM versions").fetchone()["n"]
+    result = req(a, "GET", "/editor/release", cookie=cookie)
+    assert dict(result.headers)["Location"] == "/editor/versions"
+    assert conn.execute("SELECT count(*) AS n FROM versions").fetchone()["n"] == before
+
+
+def test_redirect_encodes_unicode_without_double_encoding():
+    original = "/editor/versions?m=Собрана версия&next=/v/2026-11-16-2/"
+    response = cabinet.redirect(original)
+    location = dict(response.headers)["Location"]
+    assert location.isascii()
+    assert unquote(location) == original
+    assert bytes(Headers(response.headers))
+    assert dict(cabinet.redirect(location).headers)["Location"] == location
+    assert "\r" not in dict(cabinet.redirect("/editor/?m=x\r\nInjected: y").headers)["Location"]

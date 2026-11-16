@@ -43,3 +43,20 @@ and7 pipeline tests). Concurrent accept creates one item; refreshed suggestions
 invalidate old revisions. Public fixture publication preserves previous snapshot.
 Browser failure from low-contrast inherited danger-button style was corrected by
 using the standard button token; final axe result has zero violations.
+
+
+## Release redirect repair — Ivan26855
+
+START_CHANGE_SUMMARY: M-CABINET / V-M-CABINET fixes all redirect Location headers
+at the shared boundary, preserving already encoded URLs and separators. Source:
+production release2026-11-16-2 was saved held, then WSGI failed encoding Unicode.
+START_MODULE_CONTRACT: Location is ASCII URI; GET /editor/release is authenticated
+navigation to versions, never a mutation. POST release and explicit publish remain
+unchanged. Tests serialize actual WSGI headers for release and publish, check
+Unicode roundtrip, existing escapes and safe GET without creating a version.
+No schema or public snapshot changes; deploy cabinet.py only over current release.
+Verified:23 cabinet/candidate tests passed; October reference passed. Real Chromium
+login → release → redirect → publish → redirect passed on isolated test DB; GET
+release navigates safely. Ruff import fix applied; lint passes except pre-existing
+F811/E702/E741 in test_cabinet.py. Legacy whole-file formatting skipped to avoid
+unrelated churn. git diff --check passes.
